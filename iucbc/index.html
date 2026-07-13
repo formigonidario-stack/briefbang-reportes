@@ -195,7 +195,45 @@
   .obj-pct { width: 52px; text-align: right; font-size: 12px; font-weight: 700; flex-shrink: 0; }
   .obj-pct.ok { color: var(--good); }
   .obj-pct.low { color: var(--text-muted); }
+  .obj-pct.bad { color: var(--critical); }
   .obj-divider { height: 1px; background: var(--grid); margin: 18px 0; }
+
+  /* Distribución por canal — 3 columnas */
+  .channel-columns {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .channel-col {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .channel-col-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  @media (max-width: 900px) { .channel-columns { grid-template-columns: 1fr; } }
+
+  .donut-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .donut-row:last-child { margin-bottom: 0; }
+  .donut {
+    width: 64px; height: 64px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .donut-hole {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--surface-1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--text-primary); text-align: center;
+  }
+  .donut-info { font-size: 12px; color: var(--text-secondary); }
+  .donut-carrera { font-weight: 700; color: var(--text-primary); font-size: 13px; margin-bottom: 4px; }
+  .donut-line { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .donut-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .cpl-num-block { margin-bottom: 18px; }
+  .cpl-num-block:last-child { margin-bottom: 0; }
+  .cpl-num-carrera { font-weight: 700; color: var(--text-primary); font-size: 13px; margin-bottom: 6px; }
+  .cpl-num-line { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-secondary); padding: 3px 0; }
+  .cpl-num-line strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 </style>
 
 <div class="viz-root">
@@ -230,22 +268,30 @@
     </section>
 
     <section>
-      <div class="section-title">Leads por canal</div>
+      <div class="section-title">Distribución por canal</div>
       <div class="section-note">Meta vs Google, por carrera</div>
-      <div class="chart-card">
-        <div class="legend">
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
+      <div class="channel-columns">
+        <div class="channel-col">
+          <div class="channel-col-title">Leads por canal</div>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
+          </div>
+          <div id="leadsChannelDonuts"></div>
         </div>
-        <div id="leadsChannelBars"></div>
-      </div>
-    </section>
-
-    <section>
-      <div class="section-title">CPL por canal</div>
-      <div class="section-note">Costo por lead de Meta vs Google, por carrera — barras más cortas son más eficientes</div>
-      <div class="chart-card">
-        <div id="cplChannelBars"></div>
+        <div class="channel-col">
+          <div class="channel-col-title">CPL por canal</div>
+          <div class="section-note" style="margin-bottom:16px;">Costo por lead — sin gráfico, solo el número</div>
+          <div id="cplChannelNumbers"></div>
+        </div>
+        <div class="channel-col">
+          <div class="channel-col-title">Inversión por canal, por carrera</div>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
+          </div>
+          <div id="investDonuts"></div>
+        </div>
       </div>
     </section>
 
@@ -254,17 +300,6 @@
       <div class="section-note">Ranking por CPL total, costo por calificado y costo por cierre — de más a menos eficiente</div>
       <div class="chart-card table-scroll">
         <table id="efficiencyTable"></table>
-      </div>
-    </section>
-
-    <section>
-      <div class="section-title">Inversión por canal, por carrera</div>
-      <div class="chart-card">
-        <div class="legend">
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
-          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
-        </div>
-        <div id="investBars"></div>
       </div>
     </section>
 
@@ -509,61 +544,47 @@
     ).join("");
   }
 
-  function renderBars(rowsByCarrera) {
-    const maxInv = Math.max(...rowsByCarrera.map(r => r.invTotal));
-    document.getElementById("investBars").innerHTML = rowsByCarrera.map(r => {
-      const metaPct = (r.invMeta / maxInv) * 100;
-      const googlePct = (r.invGoogle / maxInv) * 100;
-      return `
-        <div class="bar-row">
-          <div class="bar-label">${r.carrera}</div>
-          <div class="bar-track">
-            <div class="bar-seg" style="width:${metaPct}%; background:var(--series-meta)"></div>
-            <div class="bar-seg" style="width:${googlePct}%; background:var(--series-google)"></div>
-          </div>
-          <div class="bar-value">${fmtMoney(r.invTotal)}</div>
-        </div>`;
-    }).join("");
+  // Donut de 2 categorías (Meta/Google) vía conic-gradient — sin librerías externas
+  function donutRow(carrera, metaVal, googleVal, fmt, unitLabel) {
+    const total = (metaVal || 0) + (googleVal || 0);
+    const metaPct = total ? (metaVal / total) * 100 : 0;
+    const gradient = total
+      ? `conic-gradient(var(--series-meta) 0% ${metaPct}%, var(--series-google) ${metaPct}% 100%)`
+      : `var(--grid)`;
+    return `
+      <div class="donut-row">
+        <div class="donut" style="background:${gradient}">
+          <div class="donut-hole">${total ? fmtPct(metaPct) : "—"}</div>
+        </div>
+        <div class="donut-info">
+          <div class="donut-carrera">${carrera}</div>
+          <div class="donut-line"><span class="donut-dot" style="background:var(--series-meta)"></span>Meta: ${fmt(metaVal)}</div>
+          <div class="donut-line"><span class="donut-dot" style="background:var(--series-google)"></span>Google: ${fmt(googleVal)}</div>
+        </div>
+      </div>`;
   }
 
-  function renderLeadsChannelBars(rowsByCarrera) {
-    const maxLeads = Math.max(...rowsByCarrera.map(r => r.leadsTotal));
-    document.getElementById("leadsChannelBars").innerHTML = rowsByCarrera.map(r => {
-      const metaPct = (r.leadsMeta / maxLeads) * 100;
-      const googlePct = (r.leadsGoogle / maxLeads) * 100;
-      return `
-        <div class="bar-row">
-          <div class="bar-label">${r.carrera}</div>
-          <div class="bar-track">
-            <div class="bar-seg" style="width:${metaPct}%; background:var(--series-meta)"></div>
-            <div class="bar-seg" style="width:${googlePct}%; background:var(--series-google)"></div>
-          </div>
-          <div class="bar-value">${fmtInt(r.leadsTotal)} leads</div>
-        </div>`;
-    }).join("");
+  function renderLeadsChannelDonuts(rowsByCarrera) {
+    document.getElementById("leadsChannelDonuts").innerHTML = rowsByCarrera.map(r =>
+      donutRow(r.carrera, r.leadsMeta, r.leadsGoogle, fmtInt)
+    ).join("");
   }
 
-  function renderCplChannelBars(rowsByCarrera) {
-    const allCpl = rowsByCarrera.flatMap(r => [r.cplMeta, r.cplGoogle]).filter(v => v != null);
-    const maxCpl = allCpl.length ? Math.max(...allCpl) : 1;
-    document.getElementById("cplChannelBars").innerHTML = rowsByCarrera.map(r => {
-      const metaPct = r.cplMeta != null ? (r.cplMeta / maxCpl) * 100 : 0;
-      const googlePct = r.cplGoogle != null ? (r.cplGoogle / maxCpl) * 100 : 0;
-      return `
-        <div class="group-row">
-          <div class="group-carrera-label">${r.carrera}</div>
-          <div class="group-bar-line">
-            <div class="group-bar-chan">Meta</div>
-            <div class="group-bar-track"><div class="group-bar-fill" style="width:${metaPct}%; background:var(--series-meta)"></div></div>
-            <div class="group-bar-value">${fmtMoney(r.cplMeta)}</div>
-          </div>
-          <div class="group-bar-line">
-            <div class="group-bar-chan">Google</div>
-            <div class="group-bar-track"><div class="group-bar-fill" style="width:${googlePct}%; background:var(--series-google)"></div></div>
-            <div class="group-bar-value">${fmtMoney(r.cplGoogle)}</div>
-          </div>
-        </div>`;
-    }).join("");
+  function renderInvestDonuts(rowsByCarrera) {
+    document.getElementById("investDonuts").innerHTML = rowsByCarrera.map(r =>
+      donutRow(r.carrera, r.invMeta, r.invGoogle, fmtMoney)
+    ).join("");
+  }
+
+  function renderCplChannelNumbers(rowsByCarrera) {
+    document.getElementById("cplChannelNumbers").innerHTML = rowsByCarrera.map(r => `
+      <div class="cpl-num-block">
+        <div class="cpl-num-carrera">${r.carrera}</div>
+        <div class="cpl-num-line"><span>Meta</span><strong>${fmtMoney(r.cplMeta)}</strong></div>
+        <div class="cpl-num-line"><span>Google</span><strong>${fmtMoney(r.cplGoogle)}</strong></div>
+        <div class="cpl-num-line"><span>Total</span><strong>${fmtMoney(r.cplTotal)}</strong></div>
+      </div>`
+    ).join("");
   }
 
   function renderFunnel(agg) {
@@ -765,6 +786,20 @@
       </div>`;
   }
 
+  // CPL es "menor es mejor": invierte el color respecto a objMetricRow (superar el 100% es malo, no bueno)
+  function objCplRow(real, target) {
+    const pct = target ? (real / target) * 100 : null;
+    const barPct = pct != null ? Math.min(pct, 100) : 0;
+    const pctCls = pct == null ? "low" : pct <= 100 ? "ok" : "bad";
+    return `
+      <div class="obj-metric-row">
+        <div class="obj-metric-label">CPL Total</div>
+        <div class="obj-track"><div class="obj-fill${pct != null && pct > 100 ? " over" : ""}" style="width:${barPct}%"></div></div>
+        <div class="obj-values"><strong>${fmtMoney(real)}</strong> / ${fmtMoney(target)}</div>
+        <div class="obj-pct ${pctCls}">${pct != null ? fmtPct(pct) : "—"}</div>
+      </div>`;
+  }
+
   function renderObjetivos(rowsByCarreraReal) {
     const objRows = getObjetivoRows();
     const el = document.getElementById("objetivosGrid");
@@ -788,11 +823,14 @@
     if (carrerasToShow.length > 1) {
       const realTotal = sumObjetivo(rowsByCarreraReal.map(r => ({ invTotal: r.invTotal, leadsTotales: r.leadsTotal, calificados: r.calificados || 0, cierres: r.cierres || 0 })));
       const objTotal = sumObjetivo(objByCarrera);
+      const realCplTotal = realTotal.leadsTotales ? realTotal.invTotal / realTotal.leadsTotales : null;
+      const objCplTotal = objTotal.leadsTotales ? objTotal.invTotal / objTotal.leadsTotales : null;
       html += `
         <div class="obj-block">
           <div class="obj-carrera-label total">Total carreras</div>
           ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
           ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales)}
+          ${objCplRow(realCplTotal, objCplTotal)}
           ${objMetricRow("Calificados", realTotal.calificados, objTotal.calificados)}
           ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres)}
         </div>
@@ -800,13 +838,15 @@
     }
 
     html += carrerasToShow.map(c => {
-      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: 0, cierres: 0 };
+      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: 0, cierres: 0, cplTotal: null };
       const target = objMap[c];
+      const targetCpl = target && target.leadsTotales ? target.invTotal / target.leadsTotales : null;
       return `
         <div class="obj-block">
           <div class="obj-carrera-label">${c}</div>
           ${objMetricRow("Inversión", real.invTotal, target ? target.invTotal : null)}
           ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null)}
+          ${objCplRow(real.cplTotal, targetCpl)}
           ${objMetricRow("Calificados", real.calificados || 0, target ? target.calificados : null)}
           ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null)}
         </div>`;
@@ -824,10 +864,10 @@
     renderCompare();
     renderObjetivos(rowsByCarrera);
     renderFunnel(agg);
-    renderLeadsChannelBars(rowsByCarrera);
-    renderCplChannelBars(rowsByCarrera);
+    renderLeadsChannelDonuts(rowsByCarrera);
+    renderCplChannelNumbers(rowsByCarrera);
+    renderInvestDonuts(rowsByCarrera);
     renderEfficiencyTable(rowsByCarrera);
-    renderBars(rowsByCarrera);
     renderTable(filtered);
   }
 
