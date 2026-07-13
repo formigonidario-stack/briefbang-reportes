@@ -1,0 +1,737 @@
+<title>IUCBC — Dashboard de Campañas</title>
+<style>
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --series-meta:    #2a78d6; /* blue */
+    --series-google:  #1baf7a; /* aqua */
+    --series-3:       #eda100; /* yellow */
+    --series-4:       #4a3aa7; /* violet */
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --critical:       #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --series-meta:    #3987e5;
+      --series-google:  #199e70;
+      --series-3:       #c98500;
+      --series-4:       #9085e9;
+      --good:           #0ca30c;
+      --warning:        #fab219;
+      --critical:       #e66767;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    --surface-1: #1a1a19; --page:#0d0d0d; --text-primary:#ffffff; --text-secondary:#c3c2b7;
+    --text-muted:#898781; --grid:#2c2c2a; --border: rgba(255,255,255,0.10);
+    --series-meta:#3987e5; --series-google:#199e70; --series-3:#c98500; --series-4:#9085e9; --good:#0ca30c; --warning:#fab219; --critical:#e66767;
+  }
+  :root[data-theme="light"] .viz-root {
+    --surface-1:#fcfcfb; --page:#f9f9f7; --text-primary:#0b0b0b; --text-secondary:#52514e;
+    --text-muted:#898781; --grid:#e1e0d9; --border: rgba(11,11,11,0.10);
+    --series-meta:#2a78d6; --series-google:#1baf7a; --series-3:#eda100; --series-4:#4a3aa7; --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-secondary); font-size: 14px; margin: 0 0 24px; }
+
+  /* Filters — single row of dropdowns */
+  .filters-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; align-items: flex-start; }
+  .dropdown { position: relative; }
+  .dropdown-trigger {
+    display: flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .dropdown-trigger .dd-label { color: var(--text-muted); }
+  .dropdown-trigger .dd-caret { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
+  .dropdown.open .dropdown-trigger { border-color: var(--series-meta); }
+  .dropdown-panel {
+    display: none;
+    position: absolute; top: calc(100% + 6px); left: 0;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    min-width: 220px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 20;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  }
+  .dropdown.open .dropdown-panel { display: block; }
+  .dd-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--text-secondary);
+  }
+  .dd-option:hover { background: color-mix(in srgb, var(--series-meta) 8%, var(--surface-1)); }
+  .dd-option.selected { color: var(--text-primary); font-weight: 600; }
+  .dd-option input[type="checkbox"] { accent-color: var(--series-meta); }
+  .dd-divider { height: 1px; background: var(--grid); margin: 4px 2px; }
+  .dd-all { font-size: 12px; color: var(--series-meta); padding: 6px 8px; cursor: pointer; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .stat-tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .stat-value.muted { color: var(--text-muted); font-weight: 500; font-size: 16px; }
+
+  section { margin-bottom: 32px; }
+  .section-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .section-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+
+  .chart-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 16px; font-size: 12px; color: var(--text-secondary); }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-label { width: 90px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
+  .bar-track { flex: 1; display: flex; gap: 2px; height: 22px; }
+  .bar-seg { height: 100%; border-radius: 4px; display: flex; align-items: center; }
+  .bar-value { font-size: 12px; color: var(--text-primary); width: 100px; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  /* Grouped (side-by-side) bars, e.g. CPL Meta vs Google */
+  .group-row { margin-bottom: 16px; }
+  .group-row:last-child { margin-bottom: 0; }
+  .group-carrera-label { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .group-bar-line { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .group-bar-chan { width: 60px; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+  .group-bar-track { flex: 1; height: 16px; border-radius: 4px; background: var(--grid); overflow: hidden; }
+  .group-bar-fill { height: 100%; border-radius: 4px; }
+  .group-bar-value { width: 90px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: right; font-weight: 500; color: var(--text-muted);
+    padding: 8px 10px; border-bottom: 1px solid var(--grid); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 10px; text-align: right; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  tbody td:first-child { text-align: left; font-weight: 500; font-variant-numeric: normal; }
+  tbody tr:last-child td { border-bottom: none; }
+  .table-scroll { overflow-x: auto; }
+
+  .empty-note { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+
+  /* Funnel */
+  .funnel { display: flex; flex-direction: column; gap: 0; }
+  .funnel-stage { display: flex; align-items: center; gap: 14px; padding: 10px 0; }
+  .funnel-track { flex: 1; height: 34px; border-radius: 6px; background: var(--grid); position: relative; overflow: hidden; }
+  .funnel-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; color: #fff; font-size: 12px; font-weight: 600; }
+  .funnel-fill.empty-fill { background: var(--grid) !important; color: var(--text-muted); }
+  .funnel-label { width: 130px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
+  .funnel-value-col { width: 130px; text-align: right; flex-shrink: 0; }
+  .funnel-value { font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .funnel-cost { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .funnel-conv-row { display: flex; align-items: center; gap: 14px; padding: 2px 0 8px; }
+  .funnel-conv-spacer { width: 130px; flex-shrink: 0; }
+  .funnel-conv { flex: 1; text-align: center; font-size: 11px; color: var(--text-muted); }
+  .funnel-conv strong { color: var(--text-secondary); }
+  .funnel-conv-value-spacer { width: 130px; flex-shrink: 0; }
+
+  /* Comparativo vs período anterior */
+  .compare-label { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+  .compare-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .compare-tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .compare-label-row { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .compare-value-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .compare-current { font-size: 20px; font-weight: 600; }
+  .compare-delta { font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 5px; }
+  .compare-delta.up-good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+  .compare-delta.up-bad { color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, transparent); }
+  .compare-delta.down-good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+  .compare-delta.down-bad { color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, transparent); }
+  .compare-delta.flat { color: var(--text-muted); background: var(--grid); }
+  .compare-previous { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+</style>
+
+<div class="viz-root">
+  <div class="wrap">
+    <h1>IUCBC — Dashboard de Campañas</h1>
+    <p class="subtitle">Reporting semanal por carrera · Fuente: Google Sheet "IUCBC - Reporting Campañas"</p>
+
+    <div class="filters-row" id="filtersRow"></div>
+
+    <div class="stat-grid" id="statGrid"></div>
+
+    <section>
+      <div class="section-title">Comparativo vs período anterior</div>
+      <div class="section-note" id="compareNote"></div>
+      <div class="chart-card">
+        <div class="compare-grid" id="compareGrid"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Funnel de conversión</div>
+      <div class="section-note">Leads totales → Leads en CRM → Calificados → Cierres · costo acumulado por unidad en cada etapa</div>
+      <div class="chart-card">
+        <div class="funnel" id="funnel"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Leads por canal</div>
+      <div class="section-note">Meta vs Google, por carrera</div>
+      <div class="chart-card">
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
+        </div>
+        <div id="leadsChannelBars"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">CPL por canal</div>
+      <div class="section-note">Costo por lead de Meta vs Google, por carrera — barras más cortas son más eficientes</div>
+      <div class="chart-card">
+        <div id="cplChannelBars"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Eficiencia por carrera</div>
+      <div class="section-note">Ranking por CPL total, costo por calificado y costo por cierre — de más a menos eficiente</div>
+      <div class="chart-card table-scroll">
+        <table id="efficiencyTable"></table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Inversión por canal, por carrera</div>
+      <div class="chart-card">
+        <div class="legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-meta)"></span>Meta</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--series-google)"></span>Google</div>
+        </div>
+        <div id="investBars"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">Detalle semanal por carrera</div>
+      <div class="chart-card table-scroll">
+        <table id="detailTable"></table>
+        <div class="empty-note" id="detailNote"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  // One record per carrera x semana. Add new weeks here as the sheet gets updated.
+  const records = [
+    {
+      carrera: "Medicina", mes: "Julio", semana: "06-07-2026 al 12-07-2026",
+      invMeta: 41180.12, invGoogle: 7804.79, invTotal: 48984.91,
+      leadsMeta: 25, leadsGoogle: 5, leadsTotal: 30,
+      cplMeta: 1647.20, cplGoogle: 1560.96, cplTotal: 1632.83,
+      leadsCRM: null, calificados: null, cierres: null
+    },
+    {
+      carrera: "Bioquimica", mes: "Julio", semana: "06-07-2026 al 12-07-2026",
+      invMeta: 43500.84, invGoogle: 7544.87, invTotal: 51045.71,
+      leadsMeta: 11, leadsGoogle: 2, leadsTotal: 13,
+      cplMeta: 3954.62, cplGoogle: 3772.44, cplTotal: 3926.59,
+      leadsCRM: null, calificados: null, cierres: null
+    },
+    {
+      carrera: "Genetica", mes: "Julio", semana: "06-07-2026 al 12-07-2026",
+      invMeta: 41109.44, invGoogle: 7538.96, invTotal: 48648.40,
+      leadsMeta: 19, leadsGoogle: 2, leadsTotal: 21,
+      cplMeta: 2163.65, cplGoogle: 3769.48, cplTotal: 2316.59,
+      leadsCRM: null, calificados: null, cierres: null
+    }
+  ];
+
+  const MONTH_ORDER = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  const fmtMoney = n => n == null ? "—" : "$" + n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtInt = n => n == null ? "—" : n.toLocaleString("es-AR");
+  const fmtPct = n => n == null ? "—" : n.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+
+  function parseSemanaStart(semana) {
+    const m = semana.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (!m) return new Date(0);
+    return new Date(`${m[3]}-${m[2]}-${m[1]}`);
+  }
+
+  const carreras = [...new Set(records.map(r => r.carrera))];
+  const meses = [...new Set(records.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
+  const semanasSorted = [...new Set(records.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
+
+  let filterCarrera = "Todas";
+  let filterMeses = new Set(meses);
+  let filterSemanas = new Set(semanasSorted);
+  let openDropdown = null;
+
+  // ---------- Dropdown filter widget ----------
+  function ddSummary(kind) {
+    if (kind === "carrera") return filterCarrera;
+    if (kind === "mes") {
+      if (filterMeses.size === meses.length) return "Todos";
+      if (filterMeses.size === 1) return [...filterMeses][0];
+      return `${filterMeses.size} meses`;
+    }
+    if (kind === "semana") {
+      if (filterSemanas.size === semanasSorted.length) return "Todas";
+      if (filterSemanas.size === 1) return [...filterSemanas][0].split(" al ")[0];
+      return `${filterSemanas.size} semanas`;
+    }
+  }
+
+  function renderFilters() {
+    const el = document.getElementById("filtersRow");
+
+    const carreraOptions = ["Todas", ...carreras].map(c =>
+      `<div class="dd-option${c === filterCarrera ? " selected" : ""}" data-kind="carrera" data-value="${c}">${c}</div>`
+    ).join("");
+
+    const mesOptions = meses.map(m =>
+      `<label class="dd-option${filterMeses.has(m) ? " selected" : ""}">
+        <input type="checkbox" data-kind="mes" data-value="${m}" ${filterMeses.has(m) ? "checked" : ""}/> ${m}
+      </label>`
+    ).join("");
+
+    const semanaOptions = semanasSorted.map(s =>
+      `<label class="dd-option${filterSemanas.has(s) ? " selected" : ""}">
+        <input type="checkbox" data-kind="semana" data-value="${s}" ${filterSemanas.has(s) ? "checked" : ""}/> ${s}
+      </label>`
+    ).join("");
+
+    el.innerHTML = `
+      <div class="dropdown${openDropdown === "carrera" ? " open" : ""}" data-dd="carrera">
+        <button class="dropdown-trigger" data-toggle="carrera"><span class="dd-label">Carrera:</span> ${ddSummary("carrera")} <span class="dd-caret">▾</span></button>
+        <div class="dropdown-panel">${carreraOptions}</div>
+      </div>
+      <div class="dropdown${openDropdown === "mes" ? " open" : ""}" data-dd="mes">
+        <button class="dropdown-trigger" data-toggle="mes"><span class="dd-label">Mes:</span> ${ddSummary("mes")} <span class="dd-caret">▾</span></button>
+        <div class="dropdown-panel">
+          <div class="dd-all" data-selectall="mes">Seleccionar todos</div>
+          <div class="dd-divider"></div>
+          ${mesOptions}
+        </div>
+      </div>
+      <div class="dropdown${openDropdown === "semana" ? " open" : ""}" data-dd="semana">
+        <button class="dropdown-trigger" data-toggle="semana"><span class="dd-label">Semana:</span> ${ddSummary("semana")} <span class="dd-caret">▾</span></button>
+        <div class="dropdown-panel">
+          <div class="dd-all" data-selectall="semana">Seleccionar todas</div>
+          <div class="dd-divider"></div>
+          ${semanaOptions}
+        </div>
+      </div>
+    `;
+
+    el.querySelectorAll(".dropdown-panel").forEach(panel => {
+      panel.addEventListener("click", (e) => e.stopPropagation());
+    });
+
+    el.querySelectorAll("[data-toggle]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const kind = btn.dataset.toggle;
+        openDropdown = openDropdown === kind ? null : kind;
+        renderAll();
+      });
+    });
+
+    el.querySelectorAll('.dd-option[data-kind="carrera"]').forEach(opt => {
+      opt.addEventListener("click", () => {
+        filterCarrera = opt.dataset.value;
+        openDropdown = null;
+        renderAll();
+      });
+    });
+
+    el.querySelectorAll('input[data-kind="mes"]').forEach(cb => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (cb.checked) filterMeses.add(cb.dataset.value); else filterMeses.delete(cb.dataset.value);
+        if (filterMeses.size === 0) filterMeses.add(cb.dataset.value), cb.checked = true;
+        renderAll();
+      });
+    });
+    el.querySelectorAll('input[data-kind="semana"]').forEach(cb => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (cb.checked) filterSemanas.add(cb.dataset.value); else filterSemanas.delete(cb.dataset.value);
+        if (filterSemanas.size === 0) filterSemanas.add(cb.dataset.value), cb.checked = true;
+        renderAll();
+      });
+    });
+    el.querySelectorAll("[data-selectall]").forEach(link => {
+      link.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const kind = link.dataset.selectall;
+        if (kind === "mes") filterMeses = new Set(meses);
+        if (kind === "semana") filterSemanas = new Set(semanasSorted);
+        renderAll();
+      });
+    });
+  }
+
+  document.addEventListener("click", () => {
+    if (openDropdown) { openDropdown = null; renderAll(); }
+  });
+
+  // ---------- Data helpers ----------
+  function getFiltered() {
+    return records.filter(r =>
+      (filterCarrera === "Todas" || r.carrera === filterCarrera) &&
+      filterMeses.has(r.mes) &&
+      filterSemanas.has(r.semana)
+    );
+  }
+
+  // Collapse multiple weekly rows into one summary per carrera
+  function byCarrera(rows) {
+    const map = {};
+    rows.forEach(r => {
+      if (!map[r.carrera]) map[r.carrera] = { carrera: r.carrera, semana: r.semana, invMeta: 0, invGoogle: 0, invTotal: 0, leadsMeta: 0, leadsGoogle: 0, leadsTotal: 0, leadsCRM: null, calificados: null, cierres: null };
+      const acc = map[r.carrera];
+      acc.invMeta += r.invMeta || 0;
+      acc.invGoogle += r.invGoogle || 0;
+      acc.invTotal += r.invTotal || 0;
+      acc.leadsMeta += r.leadsMeta || 0;
+      acc.leadsGoogle += r.leadsGoogle || 0;
+      acc.leadsTotal += r.leadsTotal || 0;
+      if (r.leadsCRM != null) acc.leadsCRM = (acc.leadsCRM || 0) + r.leadsCRM;
+      if (r.calificados != null) acc.calificados = (acc.calificados || 0) + r.calificados;
+      if (r.cierres != null) acc.cierres = (acc.cierres || 0) + r.cierres;
+      acc.semana = r.semana;
+    });
+    return Object.values(map).map(acc => ({
+      ...acc,
+      cplMeta: acc.leadsMeta ? acc.invMeta / acc.leadsMeta : null,
+      cplGoogle: acc.leadsGoogle ? acc.invGoogle / acc.leadsGoogle : null,
+      cplTotal: acc.leadsTotal ? acc.invTotal / acc.leadsTotal : null
+    }));
+  }
+
+  function aggregate(rows) {
+    const sum = key => rows.reduce((a, r) => a + (r[key] || 0), 0);
+    const invTotal = sum("invTotal");
+    const leadsTotal = sum("leadsTotal");
+    const invMeta = sum("invMeta"), invGoogle = sum("invGoogle");
+    const leadsMeta = sum("leadsMeta"), leadsGoogle = sum("leadsGoogle");
+    return {
+      invTotal, leadsTotal,
+      cplTotal: leadsTotal ? invTotal / leadsTotal : null,
+      invMeta, invGoogle, leadsMeta, leadsGoogle,
+      cplMeta: leadsMeta ? invMeta / leadsMeta : null,
+      cplGoogle: leadsGoogle ? invGoogle / leadsGoogle : null,
+      leadsCRM: rows.some(r => r.leadsCRM != null) ? sum("leadsCRM") : null,
+      calificados: rows.some(r => r.calificados != null) ? sum("calificados") : null,
+      cierres: rows.some(r => r.cierres != null) ? sum("cierres") : null
+    };
+  }
+
+  // ---------- Renderers ----------
+  function renderStats(agg) {
+    const tiles = [
+      { label: "Inversión total", value: fmtMoney(agg.invTotal) },
+      { label: "Leads totales", value: fmtInt(agg.leadsTotal) },
+      { label: "CPL promedio", value: fmtMoney(agg.cplTotal) },
+      { label: "Leads en CRM", value: fmtInt(agg.leadsCRM) },
+      { label: "Calificados", value: fmtInt(agg.calificados) },
+      { label: "Cierres", value: fmtInt(agg.cierres) }
+    ];
+    document.getElementById("statGrid").innerHTML = tiles.map(t =>
+      `<div class="stat-tile"><div class="stat-label">${t.label}</div><div class="stat-value${t.value === "—" ? " muted" : ""}">${t.value}</div></div>`
+    ).join("");
+  }
+
+  function renderBars(rowsByCarrera) {
+    const maxInv = Math.max(...rowsByCarrera.map(r => r.invTotal));
+    document.getElementById("investBars").innerHTML = rowsByCarrera.map(r => {
+      const metaPct = (r.invMeta / maxInv) * 100;
+      const googlePct = (r.invGoogle / maxInv) * 100;
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${r.carrera}</div>
+          <div class="bar-track">
+            <div class="bar-seg" style="width:${metaPct}%; background:var(--series-meta)"></div>
+            <div class="bar-seg" style="width:${googlePct}%; background:var(--series-google)"></div>
+          </div>
+          <div class="bar-value">${fmtMoney(r.invTotal)}</div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderLeadsChannelBars(rowsByCarrera) {
+    const maxLeads = Math.max(...rowsByCarrera.map(r => r.leadsTotal));
+    document.getElementById("leadsChannelBars").innerHTML = rowsByCarrera.map(r => {
+      const metaPct = (r.leadsMeta / maxLeads) * 100;
+      const googlePct = (r.leadsGoogle / maxLeads) * 100;
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${r.carrera}</div>
+          <div class="bar-track">
+            <div class="bar-seg" style="width:${metaPct}%; background:var(--series-meta)"></div>
+            <div class="bar-seg" style="width:${googlePct}%; background:var(--series-google)"></div>
+          </div>
+          <div class="bar-value">${fmtInt(r.leadsTotal)} leads</div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderCplChannelBars(rowsByCarrera) {
+    const allCpl = rowsByCarrera.flatMap(r => [r.cplMeta, r.cplGoogle]).filter(v => v != null);
+    const maxCpl = allCpl.length ? Math.max(...allCpl) : 1;
+    document.getElementById("cplChannelBars").innerHTML = rowsByCarrera.map(r => {
+      const metaPct = r.cplMeta != null ? (r.cplMeta / maxCpl) * 100 : 0;
+      const googlePct = r.cplGoogle != null ? (r.cplGoogle / maxCpl) * 100 : 0;
+      return `
+        <div class="group-row">
+          <div class="group-carrera-label">${r.carrera}</div>
+          <div class="group-bar-line">
+            <div class="group-bar-chan">Meta</div>
+            <div class="group-bar-track"><div class="group-bar-fill" style="width:${metaPct}%; background:var(--series-meta)"></div></div>
+            <div class="group-bar-value">${fmtMoney(r.cplMeta)}</div>
+          </div>
+          <div class="group-bar-line">
+            <div class="group-bar-chan">Google</div>
+            <div class="group-bar-track"><div class="group-bar-fill" style="width:${googlePct}%; background:var(--series-google)"></div></div>
+            <div class="group-bar-value">${fmtMoney(r.cplGoogle)}</div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderFunnel(agg) {
+    const stages = [
+      { label: "Leads totales", value: agg.leadsTotal, color: "var(--series-meta)" },
+      { label: "Leads en CRM", value: agg.leadsCRM, color: "var(--series-google)" },
+      { label: "Calificados", value: agg.calificados, color: "var(--series-3)" },
+      { label: "Cierres", value: agg.cierres, color: "var(--series-4)" }
+    ];
+    const base = stages[0].value || 1;
+    let html = "";
+    stages.forEach((s, i) => {
+      const hasValue = s.value != null;
+      const pct = hasValue ? Math.max((s.value / base) * 100, s.value > 0 ? 4 : 0) : 100;
+      const costPerUnit = (hasValue && s.value) ? agg.invTotal / s.value : null;
+      html += `
+        <div class="funnel-stage">
+          <div class="funnel-label">${s.label}</div>
+          <div class="funnel-track">
+            <div class="funnel-fill${hasValue ? "" : " empty-fill"}" style="width:${pct}%; background:${hasValue ? s.color : ""}">
+              ${hasValue ? "" : "Sin datos"}
+            </div>
+          </div>
+          <div class="funnel-value-col">
+            <div class="funnel-value">${hasValue ? fmtInt(s.value) : "—"}</div>
+            <div class="funnel-cost">${costPerUnit != null ? fmtMoney(costPerUnit) + " / unidad" : ""}</div>
+          </div>
+        </div>`;
+      if (i < stages.length - 1) {
+        const next = stages[i + 1];
+        const conv = (hasValue && next.value != null && s.value) ? fmtPct((next.value / s.value) * 100) : "—";
+        html += `
+          <div class="funnel-conv-row">
+            <div class="funnel-conv-spacer"></div>
+            <div class="funnel-conv">↓ conversión <strong>${conv}</strong></div>
+            <div class="funnel-conv-value-spacer"></div>
+          </div>`;
+      }
+    });
+    document.getElementById("funnel").innerHTML = html;
+  }
+
+  function renderEfficiencyTable(rowsByCarrera) {
+    const ranked = [...rowsByCarrera].sort((a, b) => (a.cplTotal || Infinity) - (b.cplTotal || Infinity));
+    const head = `<thead><tr>
+      <th>#</th><th>Carrera</th><th>CPL Meta</th><th>CPL Google</th><th>CPL Total</th>
+      <th>Costo / Calificado</th><th>Costo / Cierre</th>
+    </tr></thead>`;
+    const body = ranked.map((r, i) => {
+      const costPerCalificado = r.calificados ? r.invTotal / r.calificados : null;
+      const costPerCierre = r.cierres ? r.invTotal / r.cierres : null;
+      return `<tr>
+        <td style="text-align:left; font-weight:600;">${i + 1}</td>
+        <td>${r.carrera}</td>
+        <td>${fmtMoney(r.cplMeta)}</td>
+        <td>${fmtMoney(r.cplGoogle)}</td>
+        <td style="font-weight:600;">${fmtMoney(r.cplTotal)}</td>
+        <td>${fmtMoney(costPerCalificado)}</td>
+        <td>${fmtMoney(costPerCierre)}</td>
+      </tr>`;
+    }).join("");
+    document.getElementById("efficiencyTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+  }
+
+  function renderTable(rows) {
+    const head = `<thead><tr>
+      <th>Carrera / Semana</th><th>Inv. Meta</th><th>Inv. Google</th><th>Inv. Total</th>
+      <th>Leads Meta</th><th>Leads Google</th><th>Leads Tot.</th>
+      <th>CPL Total</th><th>Leads CRM</th><th>Calificados</th><th>Cierres</th>
+    </tr></thead>`;
+    const body = rows.map(r => `<tr>
+        <td>${r.carrera}<br><span style="color:var(--text-muted); font-size:11px;">${r.semana}</span></td>
+        <td>${fmtMoney(r.invMeta)}</td>
+        <td>${fmtMoney(r.invGoogle)}</td>
+        <td>${fmtMoney(r.invTotal)}</td>
+        <td>${fmtInt(r.leadsMeta)}</td>
+        <td>${fmtInt(r.leadsGoogle)}</td>
+        <td>${fmtInt(r.leadsTotal)}</td>
+        <td>${fmtMoney(r.cplTotal)}</td>
+        <td>${fmtInt(r.leadsCRM)}</td>
+        <td>${fmtInt(r.calificados)}</td>
+        <td>${fmtInt(r.cierres)}</td>
+      </tr>`).join("");
+    document.getElementById("detailTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+    document.getElementById("detailNote").textContent = "Las semanas posteriores a la última cargada todavía no tienen datos en el sheet.";
+  }
+
+  // ---------- Período anterior (WoW / MoM) ----------
+  // "lower is better" metrics get inverted delta coloring
+  const METRIC_DEFS = [
+    { key: "invTotal", label: "Inversión total", fmt: fmtMoney, lowerIsBetter: false, neutral: true },
+    { key: "leadsTotal", label: "Leads totales", fmt: fmtInt, lowerIsBetter: false },
+    { key: "cplTotal", label: "CPL promedio", fmt: fmtMoney, lowerIsBetter: true },
+    { key: "leadsCRM", label: "Leads en CRM", fmt: fmtInt, lowerIsBetter: false },
+    { key: "calificados", label: "Calificados", fmt: fmtInt, lowerIsBetter: false },
+    { key: "cierres", label: "Cierres", fmt: fmtInt, lowerIsBetter: false }
+  ];
+
+  function getPreviousKeys(selectedSet, allSorted) {
+    const selectedSorted = allSorted.filter(k => selectedSet.has(k));
+    if (!selectedSorted.length) return [];
+    const n = selectedSorted.length;
+    const earliestIdx = allSorted.indexOf(selectedSorted[0]);
+    return allSorted.slice(Math.max(0, earliestIdx - n), earliestIdx);
+  }
+
+  function renderCompare() {
+    const semanaExplicit = filterSemanas.size < semanasSorted.length;
+    const mesExplicit = filterMeses.size < meses.length;
+
+    let mode, selectedKeys, allSorted, keyField;
+    if (semanaExplicit) {
+      mode = "semana"; allSorted = semanasSorted; keyField = "semana"; selectedKeys = filterSemanas;
+    } else if (mesExplicit) {
+      mode = "mes"; allSorted = meses; keyField = "mes"; selectedKeys = filterMeses;
+    } else {
+      mode = "semana"; allSorted = semanasSorted; keyField = "semana";
+      selectedKeys = new Set(semanasSorted.length ? [semanasSorted[semanasSorted.length - 1]] : []);
+    }
+
+    const prevKeys = getPreviousKeys(selectedKeys, allSorted);
+    const currentRows = records.filter(r => (filterCarrera === "Todas" || r.carrera === filterCarrera) && selectedKeys.has(r[keyField]));
+    const prevRows = records.filter(r => (filterCarrera === "Todas" || r.carrera === filterCarrera) && prevKeys.includes(r[keyField]));
+
+    const noteLabel = mode === "semana" ? "semana(s)" : "mes(es)";
+    document.getElementById("compareNote").textContent = prevKeys.length
+      ? `${[...selectedKeys].length} ${noteLabel} seleccionado(s) vs ${prevKeys.length} ${noteLabel} anterior(es)`
+      : `Todavía no hay ${noteLabel} anteriores cargados para comparar — se va a completar solo a medida que sumes semanas nuevas al sheet.`;
+
+    if (!prevKeys.length) {
+      document.getElementById("compareGrid").innerHTML = `<div class="section-note" style="grid-column: 1 / -1;">Sin datos del período anterior todavía.</div>`;
+      return;
+    }
+
+    const currAgg = aggregate(byCarrera(currentRows));
+    const prevAgg = aggregate(byCarrera(prevRows));
+
+    document.getElementById("compareGrid").innerHTML = METRIC_DEFS.map(m => {
+      const curr = currAgg[m.key];
+      const prev = prevAgg[m.key];
+      let deltaHtml = "";
+      if (curr != null && prev != null && prev !== 0) {
+        const deltaPct = ((curr - prev) / Math.abs(prev)) * 100;
+        const isUp = deltaPct > 0.05;
+        const isDown = deltaPct < -0.05;
+        let cls = "flat";
+        if (isUp) cls = m.neutral ? "flat" : (m.lowerIsBetter ? "up-bad" : "up-good");
+        if (isDown) cls = m.neutral ? "flat" : (m.lowerIsBetter ? "down-good" : "down-bad");
+        const arrow = isUp ? "▲" : isDown ? "▼" : "→";
+        deltaHtml = `<span class="compare-delta ${cls}">${arrow} ${fmtPct(Math.abs(deltaPct))}</span>`;
+      }
+      return `
+        <div class="compare-tile">
+          <div class="compare-label-row">${m.label}</div>
+          <div class="compare-value-row">
+            <span class="compare-current">${m.fmt(curr)}</span>
+            ${deltaHtml}
+          </div>
+          <div class="compare-previous">Anterior: ${m.fmt(prev)}</div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderAll() {
+    renderFilters();
+    const filtered = getFiltered();
+    const rowsByCarrera = byCarrera(filtered);
+    const agg = aggregate(rowsByCarrera);
+    renderStats(agg);
+    renderCompare();
+    renderFunnel(agg);
+    renderLeadsChannelBars(rowsByCarrera);
+    renderCplChannelBars(rowsByCarrera);
+    renderEfficiencyTable(rowsByCarrera);
+    renderBars(rowsByCarrera);
+    renderTable(filtered);
+  }
+
+  renderAll();
+</script>
