@@ -186,7 +186,7 @@
   .obj-carrera-label.total { color: var(--text-primary); }
   .obj-metric-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .obj-metric-row:last-child { margin-bottom: 0; }
-  .obj-metric-label { width: 100px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+  .obj-metric-label { width: 140px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
   .obj-track { flex: 1; height: 16px; border-radius: 4px; background: var(--grid); overflow: hidden; position: relative; }
   .obj-fill { height: 100%; border-radius: 4px; background: var(--primary); }
   .obj-fill.over { background: var(--warning); }
@@ -800,6 +800,21 @@
       </div>`;
   }
 
+  // Filas de tasas (% Calificación, % Cierres, Tasa de conversión): valores ya son porcentajes,
+  // el "avance" es real/objetivo del propio porcentaje — más alto que el objetivo es mejor.
+  function objRateRow(label, realRate, targetRate) {
+    const pct = targetRate ? (realRate / targetRate) * 100 : null;
+    const barPct = pct != null ? Math.min(pct, 100) : 0;
+    const pctCls = pct == null ? "low" : pct >= 100 ? "ok" : "low";
+    return `
+      <div class="obj-metric-row">
+        <div class="obj-metric-label">${label}</div>
+        <div class="obj-track"><div class="obj-fill${pct != null && pct > 100 ? " over" : ""}" style="width:${barPct}%"></div></div>
+        <div class="obj-values"><strong>${fmtPct(realRate)}</strong> / ${fmtPct(targetRate)}</div>
+        <div class="obj-pct ${pctCls}">${pct != null ? fmtPct(pct) : "—"}</div>
+      </div>`;
+  }
+
   function renderObjetivos(rowsByCarreraReal) {
     const objRows = getObjetivoRows();
     const el = document.getElementById("objetivosGrid");
@@ -825,6 +840,15 @@
       const objTotal = sumObjetivo(objByCarrera);
       const realCplTotal = realTotal.leadsTotales ? realTotal.invTotal / realTotal.leadsTotales : null;
       const objCplTotal = objTotal.leadsTotales ? objTotal.invTotal / objTotal.leadsTotales : null;
+      // Tasas: null si todavía no hay datos de CRM cargados (calificados/cierres reales en null)
+      const realCalifRaw = rowsByCarreraReal.some(r => r.calificados != null) ? realTotal.calificados : null;
+      const realCierresRaw = rowsByCarreraReal.some(r => r.cierres != null) ? realTotal.cierres : null;
+      const realPctCalif = realCalifRaw != null && realTotal.leadsTotales ? (realCalifRaw / realTotal.leadsTotales) * 100 : null;
+      const realPctCierres = realCierresRaw != null && realCalifRaw ? (realCierresRaw / realCalifRaw) * 100 : null;
+      const realTasaConv = realCierresRaw != null && realTotal.leadsTotales ? (realCierresRaw / realTotal.leadsTotales) * 100 : null;
+      const objPctCalif = objTotal.leadsTotales ? (objTotal.calificados / objTotal.leadsTotales) * 100 : null;
+      const objPctCierres = objTotal.calificados ? (objTotal.cierres / objTotal.calificados) * 100 : null;
+      const objTasaConv = objTotal.leadsTotales ? (objTotal.cierres / objTotal.leadsTotales) * 100 : null;
       html += `
         <div class="obj-block">
           <div class="obj-carrera-label total">Total carreras</div>
@@ -832,15 +856,24 @@
           ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales)}
           ${objCplRow(realCplTotal, objCplTotal)}
           ${objMetricRow("Calificados", realTotal.calificados, objTotal.calificados)}
+          ${objRateRow("% de Calificación", realPctCalif, objPctCalif)}
           ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres)}
+          ${objRateRow("% de Cierres", realPctCierres, objPctCierres)}
+          ${objRateRow("Tasa de conversión", realTasaConv, objTasaConv)}
         </div>
         <div class="obj-divider"></div>`;
     }
 
     html += carrerasToShow.map(c => {
-      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: 0, cierres: 0, cplTotal: null };
+      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: null, cierres: null, cplTotal: null };
       const target = objMap[c];
       const targetCpl = target && target.leadsTotales ? target.invTotal / target.leadsTotales : null;
+      const realPctCalif = real.calificados != null && real.leadsTotal ? (real.calificados / real.leadsTotal) * 100 : null;
+      const realPctCierres = real.cierres != null && real.calificados ? (real.cierres / real.calificados) * 100 : null;
+      const realTasaConv = real.cierres != null && real.leadsTotal ? (real.cierres / real.leadsTotal) * 100 : null;
+      const targetPctCalif = target && target.leadsTotales ? (target.calificados / target.leadsTotales) * 100 : null;
+      const targetPctCierres = target && target.calificados ? (target.cierres / target.calificados) * 100 : null;
+      const targetTasaConv = target && target.leadsTotales ? (target.cierres / target.leadsTotales) * 100 : null;
       return `
         <div class="obj-block">
           <div class="obj-carrera-label">${c}</div>
@@ -848,7 +881,10 @@
           ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null)}
           ${objCplRow(real.cplTotal, targetCpl)}
           ${objMetricRow("Calificados", real.calificados || 0, target ? target.calificados : null)}
+          ${objRateRow("% de Calificación", realPctCalif, targetPctCalif)}
           ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null)}
+          ${objRateRow("% de Cierres", realPctCierres, targetPctCierres)}
+          ${objRateRow("Tasa de conversión", realTasaConv, targetTasaConv)}
         </div>`;
     }).join("");
 
