@@ -1,54 +1,31 @@
 <title>IUCBC — Dashboard de Campañas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
+  /* Brand: fondo blanco fijo, verde IUCBC + teal oscuro, Montserrat. Look único (no dark mode). */
   .viz-root {
-    --surface-1:      #fcfcfb;
-    --page:           #f9f9f7;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --grid:           #e1e0d9;
-    --border:         rgba(11,11,11,0.10);
-    --series-meta:    #2a78d6; /* blue */
-    --series-google:  #1baf7a; /* aqua */
-    --series-3:       #eda100; /* yellow */
-    --series-4:       #4a3aa7; /* violet */
-    --good:           #0ca30c;
-    --warning:        #fab219;
-    --critical:       #d03b3b;
-  }
-  @media (prefers-color-scheme: dark) {
-    .viz-root {
-      --surface-1:      #1a1a19;
-      --page:           #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --grid:           #2c2c2a;
-      --border:         rgba(255,255,255,0.10);
-      --series-meta:    #3987e5;
-      --series-google:  #199e70;
-      --series-3:       #c98500;
-      --series-4:       #9085e9;
-      --good:           #0ca30c;
-      --warning:        #fab219;
-      --critical:       #e66767;
-    }
-  }
-  :root[data-theme="dark"] .viz-root {
-    --surface-1: #1a1a19; --page:#0d0d0d; --text-primary:#ffffff; --text-secondary:#c3c2b7;
-    --text-muted:#898781; --grid:#2c2c2a; --border: rgba(255,255,255,0.10);
-    --series-meta:#3987e5; --series-google:#199e70; --series-3:#c98500; --series-4:#9085e9; --good:#0ca30c; --warning:#fab219; --critical:#e66767;
-  }
-  :root[data-theme="light"] .viz-root {
-    --surface-1:#fcfcfb; --page:#f9f9f7; --text-primary:#0b0b0b; --text-secondary:#52514e;
-    --text-muted:#898781; --grid:#e1e0d9; --border: rgba(11,11,11,0.10);
-    --series-meta:#2a78d6; --series-google:#1baf7a; --series-3:#eda100; --series-4:#4a3aa7; --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+    --primary:        #07c263; /* verde IUCBC */
+    --secondary:      #013335; /* teal oscuro IUCBC */
+    --surface-1:      #ffffff;
+    --page:           #ffffff;
+    --text-primary:   #013335;
+    --text-secondary: #3d5c5d;
+    --text-muted:     #7c9695;
+    --grid:           #e3ece9;
+    --border:         rgba(1,51,53,0.12);
+    --series-meta:    #013335; /* Meta = teal oscuro */
+    --series-google:  #07c263; /* Google = verde */
+    --series-3:       #0c8a63; /* verde-teal intermedio */
+    --series-4:       #6fe3ab; /* verde claro */
+    --good:           #07c263;
+    --warning:        #d99a00;
+    --critical:       #c23b3b;
   }
 
   * { box-sizing: border-box; }
   body { margin: 0; }
   .viz-root {
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
     background: var(--page);
     color: var(--text-primary);
     min-height: 100vh;
@@ -75,7 +52,7 @@
   }
   .dropdown-trigger .dd-label { color: var(--text-muted); }
   .dropdown-trigger .dd-caret { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
-  .dropdown.open .dropdown-trigger { border-color: var(--series-meta); }
+  .dropdown.open .dropdown-trigger { border-color: var(--primary); }
   .dropdown-panel {
     display: none;
     position: absolute; top: calc(100% + 6px); left: 0;
@@ -94,11 +71,11 @@
     display: flex; align-items: center; gap: 8px;
     padding: 7px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--text-secondary);
   }
-  .dd-option:hover { background: color-mix(in srgb, var(--series-meta) 8%, var(--surface-1)); }
+  .dd-option:hover { background: color-mix(in srgb, var(--primary) 10%, var(--surface-1)); }
   .dd-option.selected { color: var(--text-primary); font-weight: 600; }
-  .dd-option input[type="checkbox"] { accent-color: var(--series-meta); }
+  .dd-option input[type="checkbox"] { accent-color: var(--primary); }
   .dd-divider { height: 1px; background: var(--grid); margin: 4px 2px; }
-  .dd-all { font-size: 12px; color: var(--series-meta); padding: 6px 8px; cursor: pointer; }
+  .dd-all { font-size: 12px; color: var(--primary); padding: 6px 8px; cursor: pointer; }
 
   .stat-grid {
     display: grid;
