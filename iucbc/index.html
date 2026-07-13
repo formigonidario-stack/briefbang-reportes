@@ -178,6 +178,24 @@
   .compare-delta.down-bad { color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, transparent); }
   .compare-delta.flat { color: var(--text-muted); background: var(--grid); }
   .compare-previous { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Real vs Objetivo */
+  .obj-block { margin-bottom: 22px; }
+  .obj-block:last-child { margin-bottom: 0; }
+  .obj-carrera-label { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .obj-carrera-label.total { color: var(--text-primary); }
+  .obj-metric-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .obj-metric-row:last-child { margin-bottom: 0; }
+  .obj-metric-label { width: 100px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+  .obj-track { flex: 1; height: 16px; border-radius: 4px; background: var(--grid); overflow: hidden; position: relative; }
+  .obj-fill { height: 100%; border-radius: 4px; background: var(--primary); }
+  .obj-fill.over { background: var(--warning); }
+  .obj-values { width: 190px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text-secondary); }
+  .obj-values strong { color: var(--text-primary); }
+  .obj-pct { width: 52px; text-align: right; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .obj-pct.ok { color: var(--good); }
+  .obj-pct.low { color: var(--text-muted); }
+  .obj-divider { height: 1px; background: var(--grid); margin: 18px 0; }
 </style>
 
 <div class="viz-root">
@@ -195,6 +213,12 @@
       <div class="chart-card">
         <div class="compare-grid" id="compareGrid"></div>
       </div>
+    </section>
+
+    <section>
+      <div class="section-title">Real vs Objetivo</div>
+      <div class="section-note" id="objetivosNote">Inversión, leads, calificados y cierres reales vs el objetivo mensual cargado en la hoja "Objetivos"</div>
+      <div class="chart-card" id="objetivosGrid"></div>
     </section>
 
     <section>
@@ -278,6 +302,14 @@
       cplMeta: 2163.65, cplGoogle: 3769.48, cplTotal: 2316.59,
       leadsCRM: null, calificados: null, cierres: null
     }
+  ];
+
+  // Objetivos mensuales por carrera (hoja "Objetivos" del sheet). Nota: la hoja usa "Genética"
+  // con tilde, se normaliza a "Genetica" para que coincida con el resto de los datos.
+  const objetivos = [
+    { mes: "Julio", carrera: "Medicina", invTotal: 450000.00, leadsTotales: 250, calificados: 50, cierres: 32.5 },
+    { mes: "Julio", carrera: "Bioquimica", invTotal: 450000.00, leadsTotales: 150, calificados: 30, cierres: 3 },
+    { mes: "Julio", carrera: "Genetica", invTotal: 450000.00, leadsTotales: 100, calificados: 20, cierres: 9 }
   ];
 
   const MONTH_ORDER = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -695,6 +727,94 @@
     }).join("");
   }
 
+  // ---------- Real vs Objetivo ----------
+  function getObjetivoRows() {
+    return objetivos.filter(o =>
+      (filterCarrera === "Todas" || o.carrera === filterCarrera) &&
+      filterMeses.has(o.mes)
+    );
+  }
+
+  function sumObjetivo(rows) {
+    const sum = key => rows.reduce((a, r) => a + (r[key] || 0), 0);
+    return { invTotal: sum("invTotal"), leadsTotales: sum("leadsTotales"), calificados: sum("calificados"), cierres: sum("cierres") };
+  }
+
+  function objetivoByCarrera(rows) {
+    const map = {};
+    rows.forEach(o => {
+      if (!map[o.carrera]) map[o.carrera] = { carrera: o.carrera, invTotal: 0, leadsTotales: 0, calificados: 0, cierres: 0 };
+      const acc = map[o.carrera];
+      acc.invTotal += o.invTotal; acc.leadsTotales += o.leadsTotales; acc.calificados += o.calificados; acc.cierres += o.cierres;
+    });
+    return Object.values(map);
+  }
+
+  function objMetricRow(label, real, target) {
+    const pct = target ? (real / target) * 100 : null;
+    const barPct = pct != null ? Math.min(pct, 100) : 0;
+    const isMoney = label === "Inversión";
+    const fmt = isMoney ? fmtMoney : fmtInt;
+    const pctCls = pct == null ? "low" : pct >= 100 ? "ok" : "low";
+    return `
+      <div class="obj-metric-row">
+        <div class="obj-metric-label">${label}</div>
+        <div class="obj-track"><div class="obj-fill${pct != null && pct > 100 ? " over" : ""}" style="width:${barPct}%"></div></div>
+        <div class="obj-values"><strong>${fmt(real)}</strong> / ${fmt(target)}</div>
+        <div class="obj-pct ${pctCls}">${pct != null ? fmtPct(pct) : "—"}</div>
+      </div>`;
+  }
+
+  function renderObjetivos(rowsByCarreraReal) {
+    const objRows = getObjetivoRows();
+    const el = document.getElementById("objetivosGrid");
+    const noteEl = document.getElementById("objetivosNote");
+
+    if (!objRows.length) {
+      noteEl.textContent = "No hay objetivo cargado para el mes seleccionado en la hoja \"Objetivos\".";
+      el.innerHTML = `<div class="section-note">Sin objetivo para este período.</div>`;
+      return;
+    }
+
+    const mesesLabel = [...filterMeses].filter(m => objRows.some(o => o.mes === m)).join(", ");
+    noteEl.textContent = `Objetivo de ${mesesLabel} vs lo real acumulado en las semanas seleccionadas — recordá que si filtraste solo algunas semanas del mes, el "real" es parcial.`;
+
+    const objByCarrera = objetivoByCarrera(objRows);
+    const objMap = Object.fromEntries(objByCarrera.map(o => [o.carrera, o]));
+    const carrerasToShow = [...new Set([...rowsByCarreraReal.map(r => r.carrera), ...objByCarrera.map(o => o.carrera)])];
+
+    let html = "";
+
+    if (carrerasToShow.length > 1) {
+      const realTotal = sumObjetivo(rowsByCarreraReal.map(r => ({ invTotal: r.invTotal, leadsTotales: r.leadsTotal, calificados: r.calificados || 0, cierres: r.cierres || 0 })));
+      const objTotal = sumObjetivo(objByCarrera);
+      html += `
+        <div class="obj-block">
+          <div class="obj-carrera-label total">Total carreras</div>
+          ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
+          ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales)}
+          ${objMetricRow("Calificados", realTotal.calificados, objTotal.calificados)}
+          ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres)}
+        </div>
+        <div class="obj-divider"></div>`;
+    }
+
+    html += carrerasToShow.map(c => {
+      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: 0, cierres: 0 };
+      const target = objMap[c];
+      return `
+        <div class="obj-block">
+          <div class="obj-carrera-label">${c}</div>
+          ${objMetricRow("Inversión", real.invTotal, target ? target.invTotal : null)}
+          ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null)}
+          ${objMetricRow("Calificados", real.calificados || 0, target ? target.calificados : null)}
+          ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null)}
+        </div>`;
+    }).join("");
+
+    el.innerHTML = html;
+  }
+
   function renderAll() {
     renderFilters();
     const filtered = getFiltered();
@@ -702,6 +822,7 @@
     const agg = aggregate(rowsByCarrera);
     renderStats(agg);
     renderCompare();
+    renderObjetivos(rowsByCarrera);
     renderFunnel(agg);
     renderLeadsChannelBars(rowsByCarrera);
     renderCplChannelBars(rowsByCarrera);
