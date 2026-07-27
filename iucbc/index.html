@@ -280,13 +280,13 @@
 
     <section>
       <div class="section-title">Real vs Objetivo</div>
-      <div class="section-note" id="objetivosNote">Inversión, leads, calificados y cierres reales vs el objetivo mensual cargado en la hoja "Objetivos"</div>
+      <div class="section-note" id="objetivosNote">Inversión, leads y cierres reales vs el objetivo mensual cargado en la hoja "Objetivos"</div>
       <div class="chart-card" id="objetivosGrid"></div>
     </section>
 
     <section>
       <div class="section-title">Funnel de conversión</div>
-      <div class="section-note">Leads totales → Leads en CRM → Calificados → Cierres · costo acumulado por unidad en cada etapa</div>
+      <div class="section-note">Leads totales → Leads en CRM → Cierres · costo acumulado por unidad en cada etapa</div>
       <div class="chart-card">
         <div class="funnel" id="funnel"></div>
       </div>
@@ -322,7 +322,7 @@
 
     <section>
       <div class="section-title">Eficiencia por carrera</div>
-      <div class="section-note">Ranking por CPL total, costo por calificado y costo por cierre — de más a menos eficiente</div>
+      <div class="section-note">Ranking por CPL total y costo por cierre — de más a menos eficiente</div>
       <div class="chart-card table-scroll">
         <table id="efficiencyTable"></table>
       </div>
@@ -346,30 +346,31 @@
       invMeta: 41180.12, invGoogle: 7804.79, invTotal: 48984.91,
       leadsMeta: 25, leadsGoogle: 5, leadsTotal: 30,
       cplMeta: 1647.20, cplGoogle: 1560.96, cplTotal: 1632.83,
-      leadsCRM: null, calificados: null, cierres: null
+      leadsCRM: null, cierres: null
     },
     {
       carrera: "Bioquimica", mes: "Julio", semana: "06-07-2026 al 12-07-2026",
       invMeta: 43500.84, invGoogle: 7544.87, invTotal: 51045.71,
       leadsMeta: 11, leadsGoogle: 2, leadsTotal: 13,
       cplMeta: 3954.62, cplGoogle: 3772.44, cplTotal: 3926.59,
-      leadsCRM: null, calificados: null, cierres: null
+      leadsCRM: null, cierres: null
     },
     {
       carrera: "Genetica", mes: "Julio", semana: "06-07-2026 al 12-07-2026",
       invMeta: 41109.44, invGoogle: 7538.96, invTotal: 48648.40,
       leadsMeta: 19, leadsGoogle: 2, leadsTotal: 21,
       cplMeta: 2163.65, cplGoogle: 3769.48, cplTotal: 2316.59,
-      leadsCRM: null, calificados: null, cierres: null
+      leadsCRM: null, cierres: null
     }
   ];
 
   // Objetivos mensuales por carrera (hoja "Objetivos" del sheet). Nota: la hoja usa "Genética"
   // con tilde, se normaliza a "Genetica" para que coincida con el resto de los datos.
+  // leadsCRM usa el mismo objetivo que leadsTotales (no hay meta separada cargada en el sheet).
   const objetivos = [
-    { mes: "Julio", carrera: "Medicina", invTotal: 450000.00, leadsTotales: 250, calificados: 50, cierres: 32.5 },
-    { mes: "Julio", carrera: "Bioquimica", invTotal: 450000.00, leadsTotales: 150, calificados: 30, cierres: 3 },
-    { mes: "Julio", carrera: "Genetica", invTotal: 450000.00, leadsTotales: 100, calificados: 20, cierres: 9 }
+    { mes: "Julio", carrera: "Medicina", invTotal: 450000.00, leadsTotales: 250, leadsCRM: 250, cierres: 32.5 },
+    { mes: "Julio", carrera: "Bioquimica", invTotal: 450000.00, leadsTotales: 150, leadsCRM: 150, cierres: 3 },
+    { mes: "Julio", carrera: "Genetica", invTotal: 450000.00, leadsTotales: 100, leadsCRM: 100, cierres: 9 }
   ];
 
   const MONTH_ORDER = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -515,7 +516,7 @@
   function byCarrera(rows) {
     const map = {};
     rows.forEach(r => {
-      if (!map[r.carrera]) map[r.carrera] = { carrera: r.carrera, semana: r.semana, invMeta: 0, invGoogle: 0, invTotal: 0, leadsMeta: 0, leadsGoogle: 0, leadsTotal: 0, leadsCRM: null, calificados: null, cierres: null };
+      if (!map[r.carrera]) map[r.carrera] = { carrera: r.carrera, semana: r.semana, invMeta: 0, invGoogle: 0, invTotal: 0, leadsMeta: 0, leadsGoogle: 0, leadsTotal: 0, leadsCRM: null, cierres: null };
       const acc = map[r.carrera];
       acc.invMeta += r.invMeta || 0;
       acc.invGoogle += r.invGoogle || 0;
@@ -524,7 +525,6 @@
       acc.leadsGoogle += r.leadsGoogle || 0;
       acc.leadsTotal += r.leadsTotal || 0;
       if (r.leadsCRM != null) acc.leadsCRM = (acc.leadsCRM || 0) + r.leadsCRM;
-      if (r.calificados != null) acc.calificados = (acc.calificados || 0) + r.calificados;
       if (r.cierres != null) acc.cierres = (acc.cierres || 0) + r.cierres;
       acc.semana = r.semana;
     });
@@ -549,7 +549,6 @@
       cplMeta: leadsMeta ? invMeta / leadsMeta : null,
       cplGoogle: leadsGoogle ? invGoogle / leadsGoogle : null,
       leadsCRM: rows.some(r => r.leadsCRM != null) ? sum("leadsCRM") : null,
-      calificados: rows.some(r => r.calificados != null) ? sum("calificados") : null,
       cierres: rows.some(r => r.cierres != null) ? sum("cierres") : null
     };
   }
@@ -561,7 +560,6 @@
       { label: "Leads totales", value: fmtInt(agg.leadsTotal) },
       { label: "CPL promedio", value: fmtMoney(agg.cplTotal) },
       { label: "Leads en CRM", value: fmtInt(agg.leadsCRM) },
-      { label: "Calificados", value: fmtInt(agg.calificados) },
       { label: "Cierres", value: fmtInt(agg.cierres) }
     ];
     document.getElementById("statGrid").innerHTML = tiles.map(t =>
@@ -616,7 +614,6 @@
     const stages = [
       { label: "Leads totales", value: agg.leadsTotal, color: "var(--series-meta)" },
       { label: "Leads en CRM", value: agg.leadsCRM, color: "var(--series-google)" },
-      { label: "Calificados", value: agg.calificados, color: "var(--series-3)" },
       { label: "Cierres", value: agg.cierres, color: "var(--series-4)" }
     ];
     const base = stages[0].value || 1;
@@ -656,10 +653,9 @@
     const ranked = [...rowsByCarrera].sort((a, b) => (a.cplTotal || Infinity) - (b.cplTotal || Infinity));
     const head = `<thead><tr>
       <th>#</th><th>Carrera</th><th>CPL Meta</th><th>CPL Google</th><th>CPL Total</th>
-      <th>Costo / Calificado</th><th>Costo / Cierre</th>
+      <th>Costo / Cierre</th>
     </tr></thead>`;
     const body = ranked.map((r, i) => {
-      const costPerCalificado = r.calificados ? r.invTotal / r.calificados : null;
       const costPerCierre = r.cierres ? r.invTotal / r.cierres : null;
       return `<tr>
         <td style="text-align:left; font-weight:600;">${i + 1}</td>
@@ -667,7 +663,6 @@
         <td>${fmtMoney(r.cplMeta)}</td>
         <td>${fmtMoney(r.cplGoogle)}</td>
         <td style="font-weight:600;">${fmtMoney(r.cplTotal)}</td>
-        <td>${fmtMoney(costPerCalificado)}</td>
         <td>${fmtMoney(costPerCierre)}</td>
       </tr>`;
     }).join("");
@@ -678,7 +673,7 @@
     const head = `<thead><tr>
       <th>Carrera / Semana</th><th>Inv. Meta</th><th>Inv. Google</th><th>Inv. Total</th>
       <th>Leads Meta</th><th>Leads Google</th><th>Leads Tot.</th>
-      <th>CPL Total</th><th>Leads CRM</th><th>Calificados</th><th>Cierres</th>
+      <th>CPL Total</th><th>Leads CRM</th><th>Cierres</th>
     </tr></thead>`;
     const body = rows.map(r => `<tr>
         <td>${r.carrera}<br><span style="color:var(--text-muted); font-size:11px;">${r.semana}</span></td>
@@ -690,7 +685,6 @@
         <td>${fmtInt(r.leadsTotal)}</td>
         <td>${fmtMoney(r.cplTotal)}</td>
         <td>${fmtInt(r.leadsCRM)}</td>
-        <td>${fmtInt(r.calificados)}</td>
         <td>${fmtInt(r.cierres)}</td>
       </tr>`).join("");
     document.getElementById("detailTable").innerHTML = head + "<tbody>" + body + "</tbody>";
@@ -704,7 +698,6 @@
     { key: "leadsTotal", label: "Leads totales", fmt: fmtInt, lowerIsBetter: false },
     { key: "cplTotal", label: "CPL promedio", fmt: fmtMoney, lowerIsBetter: true },
     { key: "leadsCRM", label: "Leads en CRM", fmt: fmtInt, lowerIsBetter: false },
-    { key: "calificados", label: "Calificados", fmt: fmtInt, lowerIsBetter: false },
     { key: "cierres", label: "Cierres", fmt: fmtInt, lowerIsBetter: false }
   ];
 
@@ -783,15 +776,15 @@
 
   function sumObjetivo(rows) {
     const sum = key => rows.reduce((a, r) => a + (r[key] || 0), 0);
-    return { invTotal: sum("invTotal"), leadsTotales: sum("leadsTotales"), calificados: sum("calificados"), cierres: sum("cierres") };
+    return { invTotal: sum("invTotal"), leadsTotales: sum("leadsTotales"), leadsCRM: sum("leadsCRM"), cierres: sum("cierres") };
   }
 
   function objetivoByCarrera(rows) {
     const map = {};
     rows.forEach(o => {
-      if (!map[o.carrera]) map[o.carrera] = { carrera: o.carrera, invTotal: 0, leadsTotales: 0, calificados: 0, cierres: 0 };
+      if (!map[o.carrera]) map[o.carrera] = { carrera: o.carrera, invTotal: 0, leadsTotales: 0, leadsCRM: 0, cierres: 0 };
       const acc = map[o.carrera];
-      acc.invTotal += o.invTotal; acc.leadsTotales += o.leadsTotales; acc.calificados += o.calificados; acc.cierres += o.cierres;
+      acc.invTotal += o.invTotal; acc.leadsTotales += o.leadsTotales; acc.leadsCRM += o.leadsCRM; acc.cierres += o.cierres;
     });
     return Object.values(map);
   }
@@ -812,13 +805,13 @@
   }
 
   // CPL es "menor es mejor": invierte el color respecto a objMetricRow (superar el 100% es malo, no bueno)
-  function objCplRow(real, target) {
+  function objCplRow(real, target, label = "CPL Total") {
     const pct = target ? (real / target) * 100 : null;
     const barPct = pct != null ? Math.min(pct, 100) : 0;
     const pctCls = pct == null ? "low" : pct <= 100 ? "ok" : "bad";
     return `
       <div class="obj-metric-row">
-        <div class="obj-metric-label">CPL Total</div>
+        <div class="obj-metric-label">${label}</div>
         <div class="obj-track"><div class="obj-fill${pct != null && pct > 100 ? " over" : ""}" style="width:${barPct}%"></div></div>
         <div class="obj-values"><strong>${fmtMoney(real)}</strong> / ${fmtMoney(target)}</div>
         <div class="obj-pct ${pctCls}">${pct != null ? fmtPct(pct) : "—"}</div>
@@ -861,18 +854,16 @@
     let html = "";
 
     if (carrerasToShow.length > 1) {
-      const realTotal = sumObjetivo(rowsByCarreraReal.map(r => ({ invTotal: r.invTotal, leadsTotales: r.leadsTotal, calificados: r.calificados || 0, cierres: r.cierres || 0 })));
+      const realTotal = sumObjetivo(rowsByCarreraReal.map(r => ({ invTotal: r.invTotal, leadsTotales: r.leadsTotal, leadsCRM: r.leadsCRM || 0, cierres: r.cierres || 0 })));
       const objTotal = sumObjetivo(objByCarrera);
       const realCplTotal = realTotal.leadsTotales ? realTotal.invTotal / realTotal.leadsTotales : null;
       const objCplTotal = objTotal.leadsTotales ? objTotal.invTotal / objTotal.leadsTotales : null;
-      // Tasas: null si todavía no hay datos de CRM cargados (calificados/cierres reales en null)
-      const realCalifRaw = rowsByCarreraReal.some(r => r.calificados != null) ? realTotal.calificados : null;
+      // Tasas: null si todavía no hay datos de CRM cargados (leadsCRM/cierres reales en null)
+      const realLeadsCRMRaw = rowsByCarreraReal.some(r => r.leadsCRM != null) ? realTotal.leadsCRM : null;
       const realCierresRaw = rowsByCarreraReal.some(r => r.cierres != null) ? realTotal.cierres : null;
-      const realPctCalif = realCalifRaw != null && realTotal.leadsTotales ? (realCalifRaw / realTotal.leadsTotales) * 100 : null;
-      const realPctCierres = realCierresRaw != null && realCalifRaw ? (realCierresRaw / realCalifRaw) * 100 : null;
+      const realCplCRM = realLeadsCRMRaw ? realTotal.invTotal / realLeadsCRMRaw : null;
+      const objCplCRM = objTotal.leadsCRM ? objTotal.invTotal / objTotal.leadsCRM : null;
       const realTasaConv = realCierresRaw != null && realTotal.leadsTotales ? (realCierresRaw / realTotal.leadsTotales) * 100 : null;
-      const objPctCalif = objTotal.leadsTotales ? (objTotal.calificados / objTotal.leadsTotales) * 100 : null;
-      const objPctCierres = objTotal.calificados ? (objTotal.cierres / objTotal.calificados) * 100 : null;
       const objTasaConv = objTotal.leadsTotales ? (objTotal.cierres / objTotal.leadsTotales) * 100 : null;
       html += `
         <div class="obj-block">
@@ -880,24 +871,21 @@
           ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
           ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales)}
           ${objCplRow(realCplTotal, objCplTotal)}
-          ${objMetricRow("Calificados", realTotal.calificados, objTotal.calificados)}
-          ${objRateRow("% de Calificación", realPctCalif, objPctCalif)}
+          ${objMetricRow("Leads en CRM", realLeadsCRMRaw, objTotal.leadsCRM)}
+          ${objCplRow(realCplCRM, objCplCRM, "CPL en CRM")}
           ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres)}
-          ${objRateRow("% de Cierres", realPctCierres, objPctCierres)}
           ${objRateRow("Tasa de conversión", realTasaConv, objTasaConv)}
         </div>
         <div class="obj-divider"></div>`;
     }
 
     html += carrerasToShow.map(c => {
-      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, calificados: null, cierres: null, cplTotal: null };
+      const real = rowsByCarreraReal.find(r => r.carrera === c) || { invTotal: 0, leadsTotal: 0, leadsCRM: null, cierres: null, cplTotal: null };
       const target = objMap[c];
       const targetCpl = target && target.leadsTotales ? target.invTotal / target.leadsTotales : null;
-      const realPctCalif = real.calificados != null && real.leadsTotal ? (real.calificados / real.leadsTotal) * 100 : null;
-      const realPctCierres = real.cierres != null && real.calificados ? (real.cierres / real.calificados) * 100 : null;
+      const realCplCRM = real.leadsCRM ? real.invTotal / real.leadsCRM : null;
+      const targetCplCRM = target && target.leadsCRM ? target.invTotal / target.leadsCRM : null;
       const realTasaConv = real.cierres != null && real.leadsTotal ? (real.cierres / real.leadsTotal) * 100 : null;
-      const targetPctCalif = target && target.leadsTotales ? (target.calificados / target.leadsTotales) * 100 : null;
-      const targetPctCierres = target && target.calificados ? (target.cierres / target.calificados) * 100 : null;
       const targetTasaConv = target && target.leadsTotales ? (target.cierres / target.leadsTotales) * 100 : null;
       return `
         <div class="obj-block">
@@ -905,10 +893,9 @@
           ${objMetricRow("Inversión", real.invTotal, target ? target.invTotal : null)}
           ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null)}
           ${objCplRow(real.cplTotal, targetCpl)}
-          ${objMetricRow("Calificados", real.calificados || 0, target ? target.calificados : null)}
-          ${objRateRow("% de Calificación", realPctCalif, targetPctCalif)}
+          ${objMetricRow("Leads en CRM", real.leadsCRM, target ? target.leadsCRM : null)}
+          ${objCplRow(realCplCRM, targetCplCRM, "CPL en CRM")}
           ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null)}
-          ${objRateRow("% de Cierres", realPctCierres, targetPctCierres)}
           ${objRateRow("Tasa de conversión", realTasaConv, targetTasaConv)}
         </div>`;
     }).join("");
