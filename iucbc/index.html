@@ -195,6 +195,7 @@
   .obj-pct { width: 52px; text-align: right; font-size: 12px; font-weight: 700; flex-shrink: 0; }
   .obj-pct.ok { color: var(--good); }
   .obj-pct.low { color: var(--text-muted); }
+  .obj-pct.warn { color: var(--warning); }
   .obj-pct.bad { color: var(--critical); }
   .obj-divider { height: 1px; background: var(--grid); margin: 18px 0; }
 
@@ -470,11 +471,13 @@
   function ddSummary(kind) {
     if (kind === "carrera") return filterCarrera;
     if (kind === "mes") {
+      if (filterMeses.size === 0) return "Ninguno";
       if (filterMeses.size === meses.length) return "Todos";
       if (filterMeses.size === 1) return [...filterMeses][0];
       return `${filterMeses.size} meses`;
     }
     if (kind === "semana") {
+      if (filterSemanas.size === 0) return "Ninguna";
       if (filterSemanas.size === semanasSorted.length) return "Todas";
       if (filterSemanas.size === 1) return [...filterSemanas][0].split(" al ")[0];
       return `${filterSemanas.size} semanas`;
@@ -509,6 +512,7 @@
         <button class="dropdown-trigger" data-toggle="mes"><span class="dd-label">Mes:</span> ${ddSummary("mes")} <span class="dd-caret">▾</span></button>
         <div class="dropdown-panel">
           <div class="dd-all" data-selectall="mes">Seleccionar todos</div>
+          <div class="dd-all" data-clearall="mes">Quitar selección</div>
           <div class="dd-divider"></div>
           ${mesOptions}
         </div>
@@ -517,6 +521,7 @@
         <button class="dropdown-trigger" data-toggle="semana"><span class="dd-label">Semana:</span> ${ddSummary("semana")} <span class="dd-caret">▾</span></button>
         <div class="dropdown-panel">
           <div class="dd-all" data-selectall="semana">Seleccionar todas</div>
+          <div class="dd-all" data-clearall="semana">Quitar selección</div>
           <div class="dd-divider"></div>
           ${semanaOptions}
         </div>
@@ -566,6 +571,15 @@
         const kind = link.dataset.selectall;
         if (kind === "mes") filterMeses = new Set(meses);
         if (kind === "semana") filterSemanas = new Set(semanasSorted);
+        renderAll();
+      });
+    });
+    el.querySelectorAll("[data-clearall]").forEach(link => {
+      link.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const kind = link.dataset.clearall;
+        if (kind === "mes") filterMeses = new Set();
+        if (kind === "semana") filterSemanas = new Set();
         renderAll();
       });
     });
@@ -861,12 +875,18 @@
     return Object.values(map);
   }
 
-  function objMetricRow(label, real, target) {
+  // NEAR_TARGET_PCT: umbral de "cerca del objetivo" para Leads / Leads en CRM / Cierres.
+  // Verde a partir de este %; por debajo, warning. Cumplir el objetivo (100%) siempre da verde.
+  const NEAR_TARGET_PCT = 70;
+
+  function objMetricRow(label, real, target, { nearTarget = false } = {}) {
     const pct = target ? (real / target) * 100 : null;
     const barPct = pct != null ? Math.min(pct, 100) : 0;
     const isMoney = label === "Inversión";
     const fmt = isMoney ? fmtMoney : fmtInt;
-    const pctCls = pct == null ? "low" : pct >= 100 ? "ok" : "low";
+    const pctCls = pct == null ? "low" : nearTarget
+      ? (pct >= NEAR_TARGET_PCT ? "ok" : "warn")
+      : (pct >= 100 ? "ok" : "low");
     return `
       <div class="obj-metric-row">
         <div class="obj-metric-label">${label}</div>
@@ -941,11 +961,11 @@
         <div class="obj-block">
           <div class="obj-carrera-label total">Total carreras</div>
           ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
-          ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales)}
+          ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales, { nearTarget: true })}
           ${objCplRow(realCplTotal, objCplTotal)}
-          ${objMetricRow("Leads en CRM", realLeadsCRMRaw, objTotal.leadsCRM)}
+          ${objMetricRow("Leads en CRM", realLeadsCRMRaw, objTotal.leadsCRM, { nearTarget: true })}
           ${objCplRow(realCplCRM, objCplCRM, "CPL en CRM")}
-          ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres)}
+          ${objMetricRow("Cierres", realTotal.cierres, objTotal.cierres, { nearTarget: true })}
           ${objRateRow("Tasa de conversión", realTasaConv, objTasaConv)}
         </div>
         <div class="obj-divider"></div>`;
@@ -963,11 +983,11 @@
         <div class="obj-block">
           <div class="obj-carrera-label">${c}</div>
           ${objMetricRow("Inversión", real.invTotal, target ? target.invTotal : null)}
-          ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null)}
+          ${objMetricRow("Leads", real.leadsTotal, target ? target.leadsTotales : null, { nearTarget: true })}
           ${objCplRow(real.cplTotal, targetCpl)}
-          ${objMetricRow("Leads en CRM", real.leadsCRM, target ? target.leadsCRM : null)}
+          ${objMetricRow("Leads en CRM", real.leadsCRM, target ? target.leadsCRM : null, { nearTarget: true })}
           ${objCplRow(realCplCRM, targetCplCRM, "CPL en CRM")}
-          ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null)}
+          ${objMetricRow("Cierres", real.cierres || 0, target ? target.cierres : null, { nearTarget: true })}
           ${objRateRow("Tasa de conversión", realTasaConv, targetTasaConv)}
         </div>`;
     }).join("");
