@@ -296,7 +296,7 @@
 
     <section>
       <div class="section-title">Distribución por canal</div>
-      <div class="section-note">Meta vs Google, por carrera</div>
+      <div class="section-note">Meta vs Google, por campaña</div>
       <div class="channel-columns">
         <div class="channel-col">
           <div class="channel-col-title">Leads por canal</div>
@@ -323,7 +323,7 @@
     </section>
 
     <section>
-      <div class="section-title">Eficiencia por carrera</div>
+      <div class="section-title">Eficiencia por campaña</div>
       <div class="section-note">Ranking por CPL total y costo por cierre — de más a menos eficiente</div>
       <div class="chart-card table-scroll">
         <table id="efficiencyTable"></table>
@@ -331,7 +331,7 @@
     </section>
 
     <section>
-      <div class="section-title">Detalle semanal por carrera</div>
+      <div class="section-title">Detalle semanal por campaña</div>
       <div class="chart-card table-scroll">
         <table id="detailTable"></table>
         <div class="empty-note" id="detailNote"></div>
@@ -341,17 +341,34 @@
 </div>
 
 <script>
-  // Datos leídos en vivo desde el Google Sheet publicado (una pestaña por carrera + Objetivos).
+  // Datos leídos en vivo desde el Google Sheet publicado (una pestaña por campaña + Objetivos).
   // Se completan de forma asíncrona en init(); ver más abajo.
   let records = [];
   let objetivos = [];
 
   const SHEET_URLS = {
-    Medicina: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=0&single=true&output=csv",
-    Bioquimica: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=910403483&single=true&output=csv",
-    Genetica: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=1669142941&single=true&output=csv",
     Objetivos: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=1441818073&single=true&output=csv"
   };
+
+  // Registro de campañas: nombre exacto (debe matchear el texto de la columna "Carrera"/"Campaña"
+  // en la hoja "Objetivos"), categoría a la que pertenece y URL de "Publicar en la web" (CSV) de
+  // su propia pestaña. Para sumar una campaña nueva: duplicar una pestaña existente, cargarle los
+  // datos, Archivo → Compartir → Publicar en la web → elegir esa pestaña → CSV → Publicar, y pegar
+  // la URL acá. Mientras `url` esté vacío la campaña se omite (no rompe el resto del dashboard).
+  const CAMPAIGNS = {
+    Medicina:   { categoria: "Carreras", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=0&single=true&output=csv" },
+    Bioquimica: { categoria: "Carreras", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=910403483&single=true&output=csv" },
+    Genetica:   { categoria: "Carreras", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=1669142941&single=true&output=csv" },
+
+    "Branding IUCBC": { categoria: "Marca", url: "" }, // TODO: pegar URL CSV publicada de la pestaña "Branding IUCBC"
+
+    "Enfermería Universitaria": { categoria: "Tecnicaturas", url: "" }, // TODO
+    "Tecnicatura Universitaria en Prácticas Cardiológicas": { categoria: "Tecnicaturas", url: "" }, // TODO
+    "Tecnicatura Universitaria en Hemoterapia e Inmunohematologia": { categoria: "Tecnicaturas", url: "" }, // TODO
+    "Tecnicatura Universitaria en Instrumentación Quirúrgica": { categoria: "Tecnicaturas", url: "" } // TODO
+  };
+
+  const CATEGORIA_ORDER = ["Marca", "Carreras", "Tecnicaturas"];
 
   // Parser CSV simple con soporte de campos entre comillas (Google Sheets exporta así
   // cuando un valor contiene comas).
@@ -458,17 +475,32 @@
   }
 
   // Se calculan en init(), una vez que records/objetivos llegan del Sheet.
+  let categorias = [];
   let carreras = [];
   let meses = [];
   let semanasSorted = [];
 
+  let filterCategoria = "Carreras";
   let filterCarrera = "Todas";
   let filterMeses = new Set();
   let filterSemanas = new Set();
   let openDropdown = null;
 
+  // Recalcula qué campañas/meses/semanas hay para mostrar dentro de la categoría elegida,
+  // y resetea los filtros dependientes (carrera/mes/semana) a "todo seleccionado".
+  function refreshScopeForCategoria() {
+    const scoped = records.filter(r => (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria);
+    carreras = [...new Set(scoped.map(r => r.carrera))];
+    meses = [...new Set(scoped.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
+    semanasSorted = [...new Set(scoped.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
+    filterCarrera = "Todas";
+    filterMeses = new Set(meses);
+    filterSemanas = new Set(semanasSorted);
+  }
+
   // ---------- Dropdown filter widget ----------
   function ddSummary(kind) {
+    if (kind === "categoria") return filterCategoria;
     if (kind === "carrera") return filterCarrera;
     if (kind === "mes") {
       if (filterMeses.size === 0) return "Ninguno";
@@ -487,6 +519,10 @@
   function renderFilters() {
     const el = document.getElementById("filtersRow");
 
+    const categoriaOptions = categorias.map(cat =>
+      `<div class="dd-option${cat === filterCategoria ? " selected" : ""}" data-kind="categoria" data-value="${cat}">${cat}</div>`
+    ).join("");
+
     const carreraOptions = ["Todas", ...carreras].map(c =>
       `<div class="dd-option${c === filterCarrera ? " selected" : ""}" data-kind="carrera" data-value="${c}">${c}</div>`
     ).join("");
@@ -504,8 +540,12 @@
     ).join("");
 
     el.innerHTML = `
+      <div class="dropdown${openDropdown === "categoria" ? " open" : ""}" data-dd="categoria">
+        <button class="dropdown-trigger" data-toggle="categoria"><span class="dd-label">Reporte:</span> ${ddSummary("categoria")} <span class="dd-caret">▾</span></button>
+        <div class="dropdown-panel">${categoriaOptions}</div>
+      </div>
       <div class="dropdown${openDropdown === "carrera" ? " open" : ""}" data-dd="carrera">
-        <button class="dropdown-trigger" data-toggle="carrera"><span class="dd-label">Carrera:</span> ${ddSummary("carrera")} <span class="dd-caret">▾</span></button>
+        <button class="dropdown-trigger" data-toggle="carrera"><span class="dd-label">Campaña:</span> ${ddSummary("carrera")} <span class="dd-caret">▾</span></button>
         <div class="dropdown-panel">${carreraOptions}</div>
       </div>
       <div class="dropdown${openDropdown === "mes" ? " open" : ""}" data-dd="mes">
@@ -537,6 +577,15 @@
         e.stopPropagation();
         const kind = btn.dataset.toggle;
         openDropdown = openDropdown === kind ? null : kind;
+        renderAll();
+      });
+    });
+
+    el.querySelectorAll('.dd-option[data-kind="categoria"]').forEach(opt => {
+      opt.addEventListener("click", () => {
+        filterCategoria = opt.dataset.value;
+        refreshScopeForCategoria();
+        openDropdown = null;
         renderAll();
       });
     });
@@ -592,6 +641,7 @@
   // ---------- Data helpers ----------
   function getFiltered() {
     return records.filter(r =>
+      (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria &&
       (filterCarrera === "Todas" || r.carrera === filterCarrera) &&
       filterMeses.has(r.mes) &&
       filterSemanas.has(r.semana)
@@ -738,7 +788,7 @@
   function renderEfficiencyTable(rowsByCarrera) {
     const ranked = [...rowsByCarrera].sort((a, b) => (a.cplTotal || Infinity) - (b.cplTotal || Infinity));
     const head = `<thead><tr>
-      <th>#</th><th>Carrera</th><th>CPL Meta</th><th>CPL Google</th><th>CPL Total</th>
+      <th>#</th><th>Campaña</th><th>CPL Meta</th><th>CPL Google</th><th>CPL Total</th>
       <th>Costo / Cierre</th>
     </tr></thead>`;
     const body = ranked.map((r, i) => {
@@ -757,7 +807,7 @@
 
   function renderTable(rows) {
     const head = `<thead><tr>
-      <th>Carrera / Semana</th><th>Inv. Meta</th><th>Inv. Google</th><th>Inv. Total</th>
+      <th>Campaña / Semana</th><th>Inv. Meta</th><th>Inv. Google</th><th>Inv. Total</th>
       <th>Leads Meta</th><th>Leads Google</th><th>Leads Tot.</th>
       <th>CPL Total</th><th>Leads CRM</th><th>Cierres</th>
     </tr></thead>`;
@@ -810,8 +860,9 @@
     }
 
     const prevKeys = getPreviousKeys(selectedKeys, allSorted);
-    const currentRows = records.filter(r => (filterCarrera === "Todas" || r.carrera === filterCarrera) && selectedKeys.has(r[keyField]));
-    const prevRows = records.filter(r => (filterCarrera === "Todas" || r.carrera === filterCarrera) && prevKeys.includes(r[keyField]));
+    const inScope = r => (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria && (filterCarrera === "Todas" || r.carrera === filterCarrera);
+    const currentRows = records.filter(r => inScope(r) && selectedKeys.has(r[keyField]));
+    const prevRows = records.filter(r => inScope(r) && prevKeys.includes(r[keyField]));
 
     const noteLabel = mode === "semana" ? "semana(s)" : "mes(es)";
     document.getElementById("compareNote").textContent = prevKeys.length
@@ -855,6 +906,7 @@
   // ---------- Real vs Objetivo ----------
   function getObjetivoRows() {
     return objetivos.filter(o =>
+      (CAMPAIGNS[o.carrera] || {}).categoria === filterCategoria &&
       (filterCarrera === "Todas" || o.carrera === filterCarrera) &&
       filterMeses.has(o.mes)
     );
@@ -959,7 +1011,7 @@
       const objTasaConv = objTotal.leadsTotales ? (objTotal.cierres / objTotal.leadsTotales) * 100 : null;
       html += `
         <div class="obj-block">
-          <div class="obj-carrera-label total">Total carreras</div>
+          <div class="obj-carrera-label total">Total ${filterCategoria}</div>
           ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
           ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales, { nearTarget: true })}
           ${objCplRow(realCplTotal, objCplTotal)}
@@ -1013,31 +1065,48 @@
 
   async function init() {
     const banner = document.getElementById("loadingBanner");
+
+    // Solo se piden las campañas que ya tienen URL cargada en CAMPAIGNS; las que todavía
+    // dicen "TODO" se omiten en silencio hasta que se les pegue la URL de su pestaña.
+    const entries = Object.entries(CAMPAIGNS).filter(([, c]) => c.url);
+    const settled = await Promise.allSettled(
+      entries.map(([name, c]) => fetchCarreraTab(c.url, name))
+    );
+    records = [];
+    const failed = [];
+    settled.forEach((res, i) => {
+      const [name] = entries[i];
+      if (res.status === "fulfilled") records.push(...res.value);
+      else { failed.push(name); console.error(name, res.reason); }
+    });
+
     try {
-      const [medicina, bioquimica, genetica, objetivosData] = await Promise.all([
-        fetchCarreraTab(SHEET_URLS.Medicina, "Medicina"),
-        fetchCarreraTab(SHEET_URLS.Bioquimica, "Bioquimica"),
-        fetchCarreraTab(SHEET_URLS.Genetica, "Genetica"),
-        fetchObjetivos(SHEET_URLS.Objetivos)
-      ]);
-      records = [...medicina, ...bioquimica, ...genetica];
-      objetivos = objetivosData;
+      objetivos = await fetchObjetivos(SHEET_URLS.Objetivos);
     } catch (err) {
       console.error(err);
+      objetivos = [];
+    }
+
+    if (!records.length) {
       if (banner) {
-        banner.textContent = "No se pudieron cargar los datos del Sheet. Verificá que las 4 pestañas sigan publicadas (Archivo → Compartir → Publicar en la web).";
+        banner.textContent = "No se pudieron cargar los datos del Sheet. Verificá que las pestañas sigan publicadas (Archivo → Compartir → Publicar en la web).";
         banner.style.color = "var(--critical)";
       }
       return;
     }
+    if (failed.length && banner) {
+      banner.textContent = `No se pudieron cargar estas campañas: ${failed.join(", ")}. Se muestra el resto igual.`;
+      banner.style.color = "var(--warning)";
+      setTimeout(() => banner.remove(), 6000);
+    } else if (banner) {
+      banner.remove();
+    }
 
-    carreras = [...new Set(records.map(r => r.carrera))];
-    meses = [...new Set(records.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
-    semanasSorted = [...new Set(records.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
-    filterMeses = new Set(meses);
-    filterSemanas = new Set(semanasSorted);
+    const carrerasCargadas = new Set(records.map(r => r.carrera));
+    categorias = CATEGORIA_ORDER.filter(cat => [...carrerasCargadas].some(c => (CAMPAIGNS[c] || {}).categoria === cat));
+    if (!categorias.includes(filterCategoria)) filterCategoria = categorias[0] || "Carreras";
 
-    if (banner) banner.remove();
+    refreshScopeForCategoria();
     renderAll();
   }
 
