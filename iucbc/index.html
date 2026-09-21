@@ -480,16 +480,16 @@
   let meses = [];
   let semanasSorted = [];
 
-  let filterCategoria = "Carreras";
+  let filterCategorias = new Set();
   let filterCarrera = "Todas";
   let filterMeses = new Set();
   let filterSemanas = new Set();
   let openDropdown = null;
 
-  // Recalcula qué campañas/meses/semanas hay para mostrar dentro de la categoría elegida,
+  // Recalcula qué campañas/meses/semanas hay para mostrar dentro de las categorías elegidas,
   // y resetea los filtros dependientes (carrera/mes/semana) a "todo seleccionado".
-  function refreshScopeForCategoria() {
-    const scoped = records.filter(r => (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria);
+  function refreshScopeForCategorias() {
+    const scoped = records.filter(r => filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria));
     carreras = [...new Set(scoped.map(r => r.carrera))];
     meses = [...new Set(scoped.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
     semanasSorted = [...new Set(scoped.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
@@ -500,7 +500,12 @@
 
   // ---------- Dropdown filter widget ----------
   function ddSummary(kind) {
-    if (kind === "categoria") return filterCategoria;
+    if (kind === "categoria") {
+      if (filterCategorias.size === 0) return "Ninguno";
+      if (filterCategorias.size === categorias.length) return "Todas";
+      if (filterCategorias.size === 1) return [...filterCategorias][0];
+      return `${filterCategorias.size} categorías`;
+    }
     if (kind === "carrera") return filterCarrera;
     if (kind === "mes") {
       if (filterMeses.size === 0) return "Ninguno";
@@ -520,7 +525,9 @@
     const el = document.getElementById("filtersRow");
 
     const categoriaOptions = categorias.map(cat =>
-      `<div class="dd-option${cat === filterCategoria ? " selected" : ""}" data-kind="categoria" data-value="${cat}">${cat}</div>`
+      `<label class="dd-option${filterCategorias.has(cat) ? " selected" : ""}">
+        <input type="checkbox" data-kind="categoria" data-value="${cat}" ${filterCategorias.has(cat) ? "checked" : ""}/> ${cat}
+      </label>`
     ).join("");
 
     const carreraOptions = ["Todas", ...carreras].map(c =>
@@ -542,7 +549,12 @@
     el.innerHTML = `
       <div class="dropdown${openDropdown === "categoria" ? " open" : ""}" data-dd="categoria">
         <button class="dropdown-trigger" data-toggle="categoria"><span class="dd-label">Reporte:</span> ${ddSummary("categoria")} <span class="dd-caret">▾</span></button>
-        <div class="dropdown-panel">${categoriaOptions}</div>
+        <div class="dropdown-panel">
+          <div class="dd-all" data-selectall="categoria">Seleccionar todos</div>
+          <div class="dd-all" data-clearall="categoria">Quitar selección</div>
+          <div class="dd-divider"></div>
+          ${categoriaOptions}
+        </div>
       </div>
       <div class="dropdown${openDropdown === "carrera" ? " open" : ""}" data-dd="carrera">
         <button class="dropdown-trigger" data-toggle="carrera"><span class="dd-label">Campaña:</span> ${ddSummary("carrera")} <span class="dd-caret">▾</span></button>
@@ -581,11 +593,12 @@
       });
     });
 
-    el.querySelectorAll('.dd-option[data-kind="categoria"]').forEach(opt => {
-      opt.addEventListener("click", () => {
-        filterCategoria = opt.dataset.value;
-        refreshScopeForCategoria();
-        openDropdown = null;
+    el.querySelectorAll('input[data-kind="categoria"]').forEach(cb => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (cb.checked) filterCategorias.add(cb.dataset.value); else filterCategorias.delete(cb.dataset.value);
+        if (filterCategorias.size === 0) filterCategorias.add(cb.dataset.value), cb.checked = true;
+        refreshScopeForCategorias();
         renderAll();
       });
     });
@@ -618,6 +631,7 @@
       link.addEventListener("click", (e) => {
         e.stopPropagation();
         const kind = link.dataset.selectall;
+        if (kind === "categoria") { filterCategorias = new Set(categorias); refreshScopeForCategorias(); }
         if (kind === "mes") filterMeses = new Set(meses);
         if (kind === "semana") filterSemanas = new Set(semanasSorted);
         renderAll();
@@ -627,6 +641,7 @@
       link.addEventListener("click", (e) => {
         e.stopPropagation();
         const kind = link.dataset.clearall;
+        if (kind === "categoria") { filterCategorias = new Set(); refreshScopeForCategorias(); }
         if (kind === "mes") filterMeses = new Set();
         if (kind === "semana") filterSemanas = new Set();
         renderAll();
@@ -641,7 +656,7 @@
   // ---------- Data helpers ----------
   function getFiltered() {
     return records.filter(r =>
-      (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria &&
+      filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) &&
       (filterCarrera === "Todas" || r.carrera === filterCarrera) &&
       filterMeses.has(r.mes) &&
       filterSemanas.has(r.semana)
@@ -860,7 +875,7 @@
     }
 
     const prevKeys = getPreviousKeys(selectedKeys, allSorted);
-    const inScope = r => (CAMPAIGNS[r.carrera] || {}).categoria === filterCategoria && (filterCarrera === "Todas" || r.carrera === filterCarrera);
+    const inScope = r => filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) && (filterCarrera === "Todas" || r.carrera === filterCarrera);
     const currentRows = records.filter(r => inScope(r) && selectedKeys.has(r[keyField]));
     const prevRows = records.filter(r => inScope(r) && prevKeys.includes(r[keyField]));
 
@@ -906,7 +921,7 @@
   // ---------- Real vs Objetivo ----------
   function getObjetivoRows() {
     return objetivos.filter(o =>
-      (CAMPAIGNS[o.carrera] || {}).categoria === filterCategoria &&
+      filterCategorias.has((CAMPAIGNS[o.carrera] || {}).categoria) &&
       (filterCarrera === "Todas" || o.carrera === filterCarrera) &&
       filterMeses.has(o.mes)
     );
@@ -1011,7 +1026,7 @@
       const objTasaConv = objTotal.leadsTotales ? (objTotal.cierres / objTotal.leadsTotales) * 100 : null;
       html += `
         <div class="obj-block">
-          <div class="obj-carrera-label total">Total ${filterCategoria}</div>
+          <div class="obj-carrera-label total">Total ${filterCategorias.size === categorias.length ? "general" : [...filterCategorias].join(" + ")}</div>
           ${objMetricRow("Inversión", realTotal.invTotal, objTotal.invTotal)}
           ${objMetricRow("Leads", realTotal.leadsTotales, objTotal.leadsTotales, { nearTarget: true })}
           ${objCplRow(realCplTotal, objCplTotal)}
@@ -1104,9 +1119,9 @@
 
     const carrerasCargadas = new Set(records.map(r => r.carrera));
     categorias = CATEGORIA_ORDER.filter(cat => [...carrerasCargadas].some(c => (CAMPAIGNS[c] || {}).categoria === cat));
-    if (!categorias.includes(filterCategoria)) filterCategoria = categorias[0] || "Carreras";
+    filterCategorias = new Set(categorias);
 
-    refreshScopeForCategoria();
+    refreshScopeForCategorias();
     renderAll();
   }
 
