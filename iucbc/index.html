@@ -481,7 +481,7 @@
   let semanasSorted = [];
 
   let filterCategorias = new Set();
-  let filterCarrera = "Todas";
+  let filterCarreras = new Set();
   let filterMeses = new Set();
   let filterSemanas = new Set();
   let openDropdown = null;
@@ -493,7 +493,7 @@
     carreras = [...new Set(scoped.map(r => r.carrera))];
     meses = [...new Set(scoped.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
     semanasSorted = [...new Set(scoped.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
-    filterCarrera = "Todas";
+    filterCarreras = new Set(carreras);
     filterMeses = new Set(meses);
     filterSemanas = new Set(semanasSorted);
   }
@@ -506,7 +506,12 @@
       if (filterCategorias.size === 1) return [...filterCategorias][0];
       return `${filterCategorias.size} categorías`;
     }
-    if (kind === "carrera") return filterCarrera;
+    if (kind === "carrera") {
+      if (filterCarreras.size === 0) return "Ninguna";
+      if (filterCarreras.size === carreras.length) return "Todas";
+      if (filterCarreras.size === 1) return [...filterCarreras][0];
+      return `${filterCarreras.size} campañas`;
+    }
     if (kind === "mes") {
       if (filterMeses.size === 0) return "Ninguno";
       if (filterMeses.size === meses.length) return "Todos";
@@ -530,8 +535,10 @@
       </label>`
     ).join("");
 
-    const carreraOptions = ["Todas", ...carreras].map(c =>
-      `<div class="dd-option${c === filterCarrera ? " selected" : ""}" data-kind="carrera" data-value="${c}">${c}</div>`
+    const carreraOptions = carreras.map(c =>
+      `<label class="dd-option${filterCarreras.has(c) ? " selected" : ""}">
+        <input type="checkbox" data-kind="carrera" data-value="${c}" ${filterCarreras.has(c) ? "checked" : ""}/> ${c}
+      </label>`
     ).join("");
 
     const mesOptions = meses.map(m =>
@@ -558,7 +565,12 @@
       </div>
       <div class="dropdown${openDropdown === "carrera" ? " open" : ""}" data-dd="carrera">
         <button class="dropdown-trigger" data-toggle="carrera"><span class="dd-label">Campaña:</span> ${ddSummary("carrera")} <span class="dd-caret">▾</span></button>
-        <div class="dropdown-panel">${carreraOptions}</div>
+        <div class="dropdown-panel">
+          <div class="dd-all" data-selectall="carrera">Seleccionar todas</div>
+          <div class="dd-all" data-clearall="carrera">Quitar selección</div>
+          <div class="dd-divider"></div>
+          ${carreraOptions}
+        </div>
       </div>
       <div class="dropdown${openDropdown === "mes" ? " open" : ""}" data-dd="mes">
         <button class="dropdown-trigger" data-toggle="mes"><span class="dd-label">Mes:</span> ${ddSummary("mes")} <span class="dd-caret">▾</span></button>
@@ -603,10 +615,11 @@
       });
     });
 
-    el.querySelectorAll('.dd-option[data-kind="carrera"]').forEach(opt => {
-      opt.addEventListener("click", () => {
-        filterCarrera = opt.dataset.value;
-        openDropdown = null;
+    el.querySelectorAll('input[data-kind="carrera"]').forEach(cb => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (cb.checked) filterCarreras.add(cb.dataset.value); else filterCarreras.delete(cb.dataset.value);
+        if (filterCarreras.size === 0) filterCarreras.add(cb.dataset.value), cb.checked = true;
         renderAll();
       });
     });
@@ -632,6 +645,7 @@
         e.stopPropagation();
         const kind = link.dataset.selectall;
         if (kind === "categoria") { filterCategorias = new Set(categorias); refreshScopeForCategorias(); }
+        if (kind === "carrera") filterCarreras = new Set(carreras);
         if (kind === "mes") filterMeses = new Set(meses);
         if (kind === "semana") filterSemanas = new Set(semanasSorted);
         renderAll();
@@ -642,6 +656,7 @@
         e.stopPropagation();
         const kind = link.dataset.clearall;
         if (kind === "categoria") { filterCategorias = new Set(); refreshScopeForCategorias(); }
+        if (kind === "carrera") filterCarreras = new Set();
         if (kind === "mes") filterMeses = new Set();
         if (kind === "semana") filterSemanas = new Set();
         renderAll();
@@ -657,7 +672,7 @@
   function getFiltered() {
     return records.filter(r =>
       filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) &&
-      (filterCarrera === "Todas" || r.carrera === filterCarrera) &&
+      filterCarreras.has(r.carrera) &&
       filterMeses.has(r.mes) &&
       filterSemanas.has(r.semana)
     );
@@ -875,7 +890,7 @@
     }
 
     const prevKeys = getPreviousKeys(selectedKeys, allSorted);
-    const inScope = r => filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) && (filterCarrera === "Todas" || r.carrera === filterCarrera);
+    const inScope = r => filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) && filterCarreras.has(r.carrera);
     const currentRows = records.filter(r => inScope(r) && selectedKeys.has(r[keyField]));
     const prevRows = records.filter(r => inScope(r) && prevKeys.includes(r[keyField]));
 
@@ -922,7 +937,7 @@
   function getObjetivoRows() {
     return objetivos.filter(o =>
       filterCategorias.has((CAMPAIGNS[o.carrera] || {}).categoria) &&
-      (filterCarrera === "Todas" || o.carrera === filterCarrera) &&
+      filterCarreras.has(o.carrera) &&
       filterMeses.has(o.mes)
     );
   }
