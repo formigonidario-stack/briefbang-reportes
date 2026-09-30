@@ -1,3 +1,4 @@
+<meta charset="utf-8" />
 <title>IUCBC — Dashboard de Campañas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -76,6 +77,28 @@
   .dd-option input[type="checkbox"] { accent-color: var(--primary); }
   .dd-divider { height: 1px; background: var(--grid); margin: 4px 2px; }
   .dd-all { font-size: 12px; color: var(--primary); padding: 6px 8px; cursor: pointer; }
+  /* Filtro Semana como calendario: se selecciona la fila entera (lunes a domingo) */
+  .dropdown-panel.cal-panel { min-width: 292px; max-height: none; padding: 8px; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px; }
+  .cal-title { font-size: 13px; font-weight: 700; }
+  .cal-nav {
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px; line-height: 1;
+  }
+  .cal-nav:disabled { opacity: 0.3; cursor: default; }
+  .cal-dow, .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .cal-dow span { font-size: 10px; font-weight: 600; color: var(--text-muted); text-align: center; padding: 4px 0; text-transform: uppercase; }
+  .cal-week { border-radius: 6px; margin-bottom: 2px; }
+  .cal-week span { font-size: 12px; text-align: center; padding: 7px 0; font-variant-numeric: tabular-nums; }
+  .cal-week span.out { color: var(--text-muted); opacity: 0.55; }
+  .cal-week.has-data { cursor: pointer; }
+  .cal-week.has-data:hover { background: color-mix(in srgb, var(--primary) 12%, var(--surface-1)); }
+  .cal-week.no-data span { color: var(--text-muted); opacity: 0.35; }
+  .cal-week.partial { background: color-mix(in srgb, var(--primary) 18%, var(--surface-1)); }
+  .cal-week.selected { background: var(--primary); }
+  .cal-week.selected span { color: #fff; font-weight: 600; opacity: 1; }
+  .cal-week.selected:hover { background: color-mix(in srgb, var(--primary) 85%, #000); }
+  .cal-foot { font-size: 11px; color: var(--text-muted); padding: 6px 4px 2px; }
 
   .stat-grid {
     display: grid;
@@ -235,6 +258,9 @@
   .cpl-num-carrera { font-weight: 700; color: var(--text-primary); font-size: 13px; margin-bottom: 6px; }
   .cpl-num-line { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-secondary); padding: 3px 0; }
   .cpl-num-line strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .cpl-num-right { display: flex; align-items: center; gap: 6px; }
+  .cpl-num-right .compare-delta { font-size: 10px; padding: 1px 5px; }
+  .cpl-num-prev { font-size: 11px; color: var(--text-muted); text-align: right; margin: -2px 0 4px; font-variant-numeric: tabular-nums; }
 
   /* Header con logos */
   .report-header {
@@ -308,7 +334,7 @@
         </div>
         <div class="channel-col">
           <div class="channel-col-title">CPL por canal</div>
-          <div class="section-note" style="margin-bottom:16px;">Costo por lead — sin gráfico, solo el número</div>
+          <div class="section-note" id="cplChannelNote" style="margin-bottom:16px;"></div>
           <div id="cplChannelNumbers"></div>
         </div>
         <div class="channel-col">
@@ -474,17 +500,48 @@
     return new Date(`${m[3]}-${m[2]}-${m[1]}`);
   }
 
+  // ---------- Semanas de calendario ----------
+  // El sheet corta las semanas en el cambio de mes ("27-07 al 31-07" + "01-08 al 02-08"), así que
+  // una semana de calendario (lunes a domingo) puede agrupar más de una fila del sheet.
+  // Fechas en hora local (new Date(y, m, d)) para que getDay() no se corra un día por el huso.
+  function parseDMY(s) {
+    const m = (s || "").match(/(\d{2})-(\d{2})-(\d{4})/);
+    return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+  }
+  function mondayOf(d) {
+    const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    out.setDate(out.getDate() - ((out.getDay() + 6) % 7));
+    return out;
+  }
+  function addDays(d, n) { const out = new Date(d); out.setDate(out.getDate() + n); return out; }
+  function isoKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function keyToDate(key) { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d); }
+  const fmtDM = d => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const calWeekKeyCache = {};
+  function calWeekKey(semana) {
+    if (!(semana in calWeekKeyCache)) {
+      const start = parseDMY(semana);
+      calWeekKeyCache[semana] = start ? isoKey(mondayOf(start)) : semana;
+    }
+    return calWeekKeyCache[semana];
+  }
+
   // Se calculan en init(), una vez que records/objetivos llegan del Sheet.
   let categorias = [];
   let carreras = [];
   let meses = [];
   let semanasSorted = [];
+  let calWeeksSorted = [];   // lunes (YYYY-MM-DD) de cada semana de calendario con datos
+  let semanaMes = {};        // fila de semana del sheet → mes al que pertenece
 
   let filterCategorias = new Set();
   let filterCarreras = new Set();
   let filterMeses = new Set();
   let filterSemanas = new Set();
   let openDropdown = null;
+  let calMonth = null;       // mes visible en el calendario de Semana ({ y, m })
 
   // Recalcula qué campañas/meses/semanas hay para mostrar dentro de las categorías elegidas,
   // y resetea los filtros dependientes (carrera/mes/semana) a "todo seleccionado".
@@ -493,9 +550,104 @@
     carreras = [...new Set(scoped.map(r => r.carrera))];
     meses = [...new Set(scoped.map(r => r.mes))].sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
     semanasSorted = [...new Set(scoped.map(r => r.semana))].sort((a, b) => parseSemanaStart(a) - parseSemanaStart(b));
+    calWeeksSorted = [...new Set(semanasSorted.map(calWeekKey))].sort();
+    semanaMes = {};
+    scoped.forEach(r => { semanaMes[r.semana] = r.mes; });
     filterCarreras = new Set(carreras);
     filterMeses = new Set(meses);
     filterSemanas = new Set(semanasSorted);
+  }
+
+  // Mes y Semana van juntos: elegir meses selecciona todas sus semanas, y elegir semanas
+  // deja en Mes los meses que esas semanas tocan (lo usa Real vs Objetivo).
+  function semanasDeMeses(mesesSet) {
+    return semanasSorted.filter(s => mesesSet.has(semanaMes[s]));
+  }
+  function syncSemanasFromMeses() {
+    filterSemanas = new Set(semanasDeMeses(filterMeses));
+  }
+  function syncMesesFromSemanas() {
+    filterMeses = new Set(meses.filter(m => [...filterSemanas].some(s => semanaMes[s] === m)));
+  }
+  function semanasDeCalWeek(key) {
+    return semanasSorted.filter(s => calWeekKey(s) === key);
+  }
+  function selectedCalWeeks() {
+    return calWeeksSorted.filter(k => semanasDeCalWeek(k).some(s => filterSemanas.has(s)));
+  }
+
+  // Click en una fila del calendario. Si estaban "Todas", arranca una selección nueva con esa
+  // semana (lo esperable al abrir el calendario y tocar una); si no, suma o saca la semana.
+  function toggleCalWeek(key) {
+    const semanas = semanasDeCalWeek(key);
+    if (!semanas.length) return;
+    const allSelected = filterSemanas.size === semanasSorted.length;
+    const weekFullySelected = semanas.every(s => filterSemanas.has(s));
+    if (allSelected) {
+      filterSemanas = new Set(semanas);
+    } else if (weekFullySelected) {
+      const next = new Set(filterSemanas);
+      semanas.forEach(s => next.delete(s));
+      if (next.size === 0) return;
+      filterSemanas = next;
+    } else {
+      semanas.forEach(s => filterSemanas.add(s));
+    }
+    syncMesesFromSemanas();
+  }
+
+  // Al abrir el calendario, mostrar el mes de la última semana elegida (o la última con datos).
+  function resetCalMonth() {
+    const pool = semanasSorted.filter(s => filterSemanas.has(s));
+    const last = (pool.length ? pool : semanasSorted).slice(-1)[0];
+    const d = last ? parseDMY(last) : new Date();
+    calMonth = { y: d.getFullYear(), m: d.getMonth() };
+  }
+
+  function calMonthBounds() {
+    if (!semanasSorted.length) return null;
+    const first = parseDMY(semanasSorted[0]);
+    const lastSem = semanasSorted[semanasSorted.length - 1];
+    const lastEnd = parseDMY(lastSem.split(" al ")[1] || lastSem) || parseDMY(lastSem);
+    return { min: first.getFullYear() * 12 + first.getMonth(), max: lastEnd.getFullYear() * 12 + lastEnd.getMonth() };
+  }
+
+  function renderCalendar() {
+    if (!calMonth) resetCalMonth();
+    const { y, m } = calMonth;
+    const bounds = calMonthBounds();
+    const idx = y * 12 + m;
+    const firstOfMonth = new Date(y, m, 1);
+    const lastOfMonth = new Date(y, m + 1, 0);
+    const weeksWithData = new Set(calWeeksSorted);
+    let rows = "";
+    for (let start = mondayOf(firstOfMonth); start <= lastOfMonth; start = addDays(start, 7)) {
+      const key = isoKey(start);
+      const semanas = semanasDeCalWeek(key);
+      const nSel = semanas.filter(s => filterSemanas.has(s)).length;
+      let cls = weeksWithData.has(key) ? "has-data" : "no-data";
+      if (nSel && nSel === semanas.length) cls += " selected";
+      else if (nSel) cls += " partial";
+      const days = [...Array(7)].map((_, i) => {
+        const d = addDays(start, i);
+        return `<span class="${d.getMonth() === m ? "" : "out"}">${d.getDate()}</span>`;
+      }).join("");
+      const title = weeksWithData.has(key) ? `Semana del ${fmtDM(start)} al ${fmtDM(addDays(start, 6))}` : "Sin datos cargados";
+      rows += `<div class="cal-week ${cls}" data-calweek="${key}" title="${title}">${days}</div>`;
+    }
+    const nWeeks = selectedCalWeeks().length;
+    const foot = filterSemanas.size === semanasSorted.length
+      ? "Todas las semanas · tocá una para filtrar solo esa"
+      : `${nWeeks} semana${nWeeks === 1 ? "" : "s"} seleccionada${nWeeks === 1 ? "" : "s"}`;
+    return `
+      <div class="cal-head">
+        <button class="cal-nav" data-calnav="-1" ${bounds && idx <= bounds.min ? "disabled" : ""}>‹</button>
+        <div class="cal-title">${MONTH_ORDER[m]} ${y}</div>
+        <button class="cal-nav" data-calnav="1" ${bounds && idx >= bounds.max ? "disabled" : ""}>›</button>
+      </div>
+      <div class="cal-dow"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+      ${rows}
+      <div class="cal-foot">${foot}</div>`;
   }
 
   // ---------- Dropdown filter widget ----------
@@ -521,8 +673,12 @@
     if (kind === "semana") {
       if (filterSemanas.size === 0) return "Ninguna";
       if (filterSemanas.size === semanasSorted.length) return "Todas";
-      if (filterSemanas.size === 1) return [...filterSemanas][0].split(" al ")[0];
-      return `${filterSemanas.size} semanas`;
+      const weeks = selectedCalWeeks();
+      if (weeks.length === 1) {
+        const start = keyToDate(weeks[0]);
+        return `${fmtDM(start)} – ${fmtDM(addDays(start, 6))}`;
+      }
+      return `${weeks.length} semanas`;
     }
   }
 
@@ -544,12 +700,6 @@
     const mesOptions = meses.map(m =>
       `<label class="dd-option${filterMeses.has(m) ? " selected" : ""}">
         <input type="checkbox" data-kind="mes" data-value="${m}" ${filterMeses.has(m) ? "checked" : ""}/> ${m}
-      </label>`
-    ).join("");
-
-    const semanaOptions = semanasSorted.map(s =>
-      `<label class="dd-option${filterSemanas.has(s) ? " selected" : ""}">
-        <input type="checkbox" data-kind="semana" data-value="${s}" ${filterSemanas.has(s) ? "checked" : ""}/> ${s}
       </label>`
     ).join("");
 
@@ -583,11 +733,11 @@
       </div>
       <div class="dropdown${openDropdown === "semana" ? " open" : ""}" data-dd="semana">
         <button class="dropdown-trigger" data-toggle="semana"><span class="dd-label">Semana:</span> ${ddSummary("semana")} <span class="dd-caret">▾</span></button>
-        <div class="dropdown-panel">
+        <div class="dropdown-panel cal-panel">
+          ${openDropdown === "semana" ? renderCalendar() : ""}
+          <div class="dd-divider"></div>
           <div class="dd-all" data-selectall="semana">Seleccionar todas</div>
           <div class="dd-all" data-clearall="semana">Quitar selección</div>
-          <div class="dd-divider"></div>
-          ${semanaOptions}
         </div>
       </div>
     `;
@@ -595,12 +745,18 @@
     el.querySelectorAll(".dropdown-panel").forEach(panel => {
       panel.addEventListener("click", (e) => e.stopPropagation());
     });
+    const openPanel = el.querySelector(".dropdown.open .dropdown-panel");
+    if (openPanel) {
+      const overflow = openPanel.getBoundingClientRect().right - (window.innerWidth - 8);
+      if (overflow > 0) openPanel.style.left = `-${overflow}px`;
+    }
 
     el.querySelectorAll("[data-toggle]").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const kind = btn.dataset.toggle;
         openDropdown = openDropdown === kind ? null : kind;
+        if (openDropdown === "semana") resetCalMonth();
         renderAll();
       });
     });
@@ -629,14 +785,22 @@
       cb.addEventListener("change", () => {
         if (cb.checked) filterMeses.add(cb.dataset.value); else filterMeses.delete(cb.dataset.value);
         if (filterMeses.size === 0) filterMeses.add(cb.dataset.value), cb.checked = true;
+        syncSemanasFromMeses();
         renderAll();
       });
     });
-    el.querySelectorAll('input[data-kind="semana"]').forEach(cb => {
-      cb.addEventListener("click", (e) => e.stopPropagation());
-      cb.addEventListener("change", () => {
-        if (cb.checked) filterSemanas.add(cb.dataset.value); else filterSemanas.delete(cb.dataset.value);
-        if (filterSemanas.size === 0) filterSemanas.add(cb.dataset.value), cb.checked = true;
+    el.querySelectorAll("[data-calweek]").forEach(row => {
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleCalWeek(row.dataset.calweek);
+        renderAll();
+      });
+    });
+    el.querySelectorAll("[data-calnav]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = calMonth.y * 12 + calMonth.m + Number(btn.dataset.calnav);
+        calMonth = { y: Math.floor(idx / 12), m: idx % 12 };
         renderAll();
       });
     });
@@ -646,8 +810,8 @@
         const kind = link.dataset.selectall;
         if (kind === "categoria") { filterCategorias = new Set(categorias); refreshScopeForCategorias(); }
         if (kind === "carrera") filterCarreras = new Set(carreras);
-        if (kind === "mes") filterMeses = new Set(meses);
-        if (kind === "semana") filterSemanas = new Set(semanasSorted);
+        if (kind === "mes") { filterMeses = new Set(meses); syncSemanasFromMeses(); }
+        if (kind === "semana") { filterSemanas = new Set(semanasSorted); syncMesesFromSemanas(); }
         renderAll();
       });
     });
@@ -657,8 +821,8 @@
         const kind = link.dataset.clearall;
         if (kind === "categoria") { filterCategorias = new Set(); refreshScopeForCategorias(); }
         if (kind === "carrera") filterCarreras = new Set();
-        if (kind === "mes") filterMeses = new Set();
-        if (kind === "semana") filterSemanas = new Set();
+        if (kind === "mes") { filterMeses = new Set(); syncSemanasFromMeses(); }
+        if (kind === "semana") { filterSemanas = new Set(); syncMesesFromSemanas(); }
         renderAll();
       });
     });
@@ -765,15 +929,28 @@
     ).join("");
   }
 
-  function renderCplChannelNumbers(rowsByCarrera) {
-    document.getElementById("cplChannelNumbers").innerHTML = rowsByCarrera.map(r => `
+  // CPL por canal de cada campaña + variación vs el período anterior. La variación solo se
+  // muestra cuando hay un mes o semanas elegidos (con "Todas" no hay período anterior).
+  function renderCplChannelNumbers(rowsByCarrera, period) {
+    const showPrev = period.matchesFilter && period.prevCount > 0;
+    const prevMap = showPrev ? Object.fromEntries(byCarrera(period.prevRows).map(r => [r.carrera, r])) : {};
+    const line = (label, curr, prev) => `
+        <div class="cpl-num-line"><span>${label}</span><span class="cpl-num-right">${showPrev ? deltaChip(curr, prev, { lowerIsBetter: true }) : ""}<strong>${fmtMoney(curr)}</strong></span></div>
+        ${showPrev ? `<div class="cpl-num-prev">Anterior: ${fmtMoney(prev)}</div>` : ""}`;
+    document.getElementById("cplChannelNumbers").innerHTML = rowsByCarrera.map(r => {
+      const p = prevMap[r.carrera] || {};
+      return `
       <div class="cpl-num-block">
         <div class="cpl-num-carrera">${r.carrera}</div>
-        <div class="cpl-num-line"><span>Meta</span><strong>${fmtMoney(r.cplMeta)}</strong></div>
-        <div class="cpl-num-line"><span>Google</span><strong>${fmtMoney(r.cplGoogle)}</strong></div>
-        <div class="cpl-num-line"><span>Total</span><strong>${fmtMoney(r.cplTotal)}</strong></div>
-      </div>`
-    ).join("");
+        ${line("Meta", r.cplMeta, p.cplMeta)}
+        ${line("Google", r.cplGoogle, p.cplGoogle)}
+        ${line("Total", r.cplTotal, p.cplTotal)}
+      </div>`;
+    }).join("");
+    const unidad = period.mode === "mes" ? ["el mes anterior", "meses anteriores"] : ["la semana anterior", "semanas anteriores"];
+    document.getElementById("cplChannelNote").textContent = showPrev
+      ? `Costo por lead · variación vs ${period.prevCount === 1 ? unidad[0] : `las ${period.prevCount} ${unidad[1]}`}`
+      :"Costo por lead · elegí un mes o semanas para ver la variación vs el período anterior";
   }
 
   function renderFunnel(agg) {
@@ -839,8 +1016,10 @@
     const head = `<thead><tr>
       <th>Campaña / Semana</th><th>Inv. Meta</th><th>Inv. Google</th><th>Inv. Total</th>
       <th>Leads Meta</th><th>Leads Google</th><th>Leads Tot.</th>
-      <th>CPL Total</th><th>Leads CRM</th><th>Cierres</th>
+      <th>CPL Meta</th><th>CPL Google</th><th>CPL Total</th><th>Leads CRM</th><th>Cierres</th>
     </tr></thead>`;
+    // CPL = inversión / leads del canal, igual que en el resto del dashboard (no la columna del sheet)
+    const cpl = (inv, leads) => leads ? inv / leads : null;
     const body = rows.map(r => `<tr>
         <td>${r.carrera}<br><span style="color:var(--text-muted); font-size:11px;">${r.semana}</span></td>
         <td>${fmtMoney(r.invMeta)}</td>
@@ -849,7 +1028,9 @@
         <td>${fmtInt(r.leadsMeta)}</td>
         <td>${fmtInt(r.leadsGoogle)}</td>
         <td>${fmtInt(r.leadsTotal)}</td>
-        <td>${fmtMoney(r.cplTotal)}</td>
+        <td>${fmtMoney(cpl(r.invMeta, r.leadsMeta))}</td>
+        <td>${fmtMoney(cpl(r.invGoogle, r.leadsGoogle))}</td>
+        <td>${fmtMoney(cpl(r.invTotal, r.leadsTotal))}</td>
         <td>${fmtInt(r.leadsCRM)}</td>
         <td>${fmtInt(r.cierres)}</td>
       </tr>`).join("");
@@ -863,6 +1044,8 @@
     { key: "invTotal", label: "Inversión total", fmt: fmtMoney, lowerIsBetter: false, neutral: true },
     { key: "leadsTotal", label: "Leads totales", fmt: fmtInt, lowerIsBetter: false },
     { key: "cplTotal", label: "CPL promedio", fmt: fmtMoney, lowerIsBetter: true },
+    { key: "cplMeta", label: "CPL Meta", fmt: fmtMoney, lowerIsBetter: true },
+    { key: "cplGoogle", label: "CPL Google", fmt: fmtMoney, lowerIsBetter: true },
     { key: "leadsCRM", label: "Leads en CRM", fmt: fmtInt, lowerIsBetter: false },
     { key: "cierres", label: "Cierres", fmt: fmtInt, lowerIsBetter: false }
   ];
@@ -875,58 +1058,72 @@
     return allSorted.slice(Math.max(0, earliestIdx - n), earliestIdx);
   }
 
-  function renderCompare() {
-    const semanaExplicit = filterSemanas.size < semanasSorted.length;
-    const mesExplicit = filterMeses.size < meses.length;
-
-    let mode, selectedKeys, allSorted, keyField;
-    if (semanaExplicit) {
-      mode = "semana"; allSorted = semanasSorted; keyField = "semana"; selectedKeys = filterSemanas;
-    } else if (mesExplicit) {
-      mode = "mes"; allSorted = meses; keyField = "mes"; selectedKeys = filterMeses;
-    } else {
-      mode = "semana"; allSorted = semanasSorted; keyField = "semana";
-      selectedKeys = new Set(semanasSorted.length ? [semanasSorted[semanasSorted.length - 1]] : []);
-    }
-
-    const prevKeys = getPreviousKeys(selectedKeys, allSorted);
+  // Define período actual y anterior según los filtros:
+  //  - "mes": las semanas elegidas son exactamente las de los meses elegidos → mismo nº de meses antes.
+  //  - "semana": selección de semanas a mano → mismo nº de semanas de calendario antes.
+  //  - "default": sin filtro de fecha → última semana de calendario vs la anterior.
+  // matchesFilter indica si el período actual es exactamente lo filtrado (no pasa en "default").
+  function getComparePeriod() {
     const inScope = r => filterCategorias.has((CAMPAIGNS[r.carrera] || {}).categoria) && filterCarreras.has(r.carrera);
-    const currentRows = records.filter(r => inScope(r) && selectedKeys.has(r[keyField]));
-    const prevRows = records.filter(r => inScope(r) && prevKeys.includes(r[keyField]));
+    const allSemanas = filterSemanas.size === semanasSorted.length;
+    const semanasSonMeses = filterMeses.size > 0 && filterMeses.size < meses.length &&
+      semanasDeMeses(filterMeses).length === filterSemanas.size &&
+      semanasDeMeses(filterMeses).every(s => filterSemanas.has(s));
 
-    const noteLabel = mode === "semana" ? "semana(s)" : "mes(es)";
-    document.getElementById("compareNote").textContent = prevKeys.length
-      ? `${[...selectedKeys].length} ${noteLabel} seleccionado(s) vs ${prevKeys.length} ${noteLabel} anterior(es)`
+    let mode, currentRows, prevRows, selectedCount, prevCount;
+    if (semanasSonMeses) {
+      mode = "mes";
+      const prevMeses = getPreviousKeys(filterMeses, meses);
+      currentRows = records.filter(r => inScope(r) && filterMeses.has(r.mes));
+      prevRows = records.filter(r => inScope(r) && prevMeses.includes(r.mes));
+      selectedCount = filterMeses.size; prevCount = prevMeses.length;
+    } else {
+      mode = allSemanas ? "default" : "semana";
+      const selWeeks = allSemanas ? calWeeksSorted.slice(-1) : selectedCalWeeks();
+      const prevWeeks = getPreviousKeys(new Set(selWeeks), calWeeksSorted);
+      currentRows = records.filter(r => inScope(r) && (allSemanas ? selWeeks.includes(calWeekKey(r.semana)) : filterSemanas.has(r.semana)));
+      prevRows = records.filter(r => inScope(r) && prevWeeks.includes(calWeekKey(r.semana)));
+      selectedCount = selWeeks.length; prevCount = prevWeeks.length;
+    }
+    return { mode, currentRows, prevRows, selectedCount, prevCount, matchesFilter: mode !== "default" };
+  }
+
+  function deltaChip(curr, prev, { lowerIsBetter = false, neutral = false } = {}) {
+    if (curr == null || prev == null || prev === 0) return "";
+    const deltaPct = ((curr - prev) / Math.abs(prev)) * 100;
+    const isUp = deltaPct > 0.05;
+    const isDown = deltaPct < -0.05;
+    let cls = "flat";
+    if (isUp) cls = neutral ? "flat" : (lowerIsBetter ? "up-bad" : "up-good");
+    if (isDown) cls = neutral ? "flat" : (lowerIsBetter ? "down-good" : "down-bad");
+    const arrow = isUp ? "▲" : isDown ? "▼" : "→";
+    return `<span class="compare-delta ${cls}">${arrow} ${fmtPct(Math.abs(deltaPct))}</span>`;
+  }
+
+  function renderCompare(period) {
+    const noteLabel = period.mode === "mes" ? "mes(es)" : "semana(s)";
+    const lead = period.mode === "default" ? "Última semana cargada vs la anterior" : `${period.selectedCount} ${noteLabel} seleccionado(s) vs ${period.prevCount} ${noteLabel} anterior(es)`;
+    document.getElementById("compareNote").textContent = period.prevCount
+      ? lead
       : `Todavía no hay ${noteLabel} anteriores cargados para comparar — se va a completar solo a medida que sumes semanas nuevas al sheet.`;
 
-    if (!prevKeys.length) {
+    if (!period.prevCount) {
       document.getElementById("compareGrid").innerHTML = `<div class="section-note" style="grid-column: 1 / -1;">Sin datos del período anterior todavía.</div>`;
       return;
     }
 
-    const currAgg = aggregate(byCarrera(currentRows));
-    const prevAgg = aggregate(byCarrera(prevRows));
+    const currAgg = aggregate(byCarrera(period.currentRows));
+    const prevAgg = aggregate(byCarrera(period.prevRows));
 
     document.getElementById("compareGrid").innerHTML = METRIC_DEFS.map(m => {
       const curr = currAgg[m.key];
       const prev = prevAgg[m.key];
-      let deltaHtml = "";
-      if (curr != null && prev != null && prev !== 0) {
-        const deltaPct = ((curr - prev) / Math.abs(prev)) * 100;
-        const isUp = deltaPct > 0.05;
-        const isDown = deltaPct < -0.05;
-        let cls = "flat";
-        if (isUp) cls = m.neutral ? "flat" : (m.lowerIsBetter ? "up-bad" : "up-good");
-        if (isDown) cls = m.neutral ? "flat" : (m.lowerIsBetter ? "down-good" : "down-bad");
-        const arrow = isUp ? "▲" : isDown ? "▼" : "→";
-        deltaHtml = `<span class="compare-delta ${cls}">${arrow} ${fmtPct(Math.abs(deltaPct))}</span>`;
-      }
       return `
         <div class="compare-tile">
           <div class="compare-label-row">${m.label}</div>
           <div class="compare-value-row">
             <span class="compare-current">${m.fmt(curr)}</span>
-            ${deltaHtml}
+            ${deltaChip(curr, prev, m)}
           </div>
           <div class="compare-previous">Anterior: ${m.fmt(prev)}</div>
         </div>`;
@@ -1082,12 +1279,13 @@
     const filtered = getFiltered();
     const rowsByCarrera = byCarrera(filtered);
     const agg = aggregate(rowsByCarrera);
+    const period = getComparePeriod();
     renderStats(agg);
-    renderCompare();
+    renderCompare(period);
     renderObjetivos(rowsByCarrera);
     renderFunnel(agg);
     renderLeadsChannelDonuts(rowsByCarrera);
-    renderCplChannelNumbers(rowsByCarrera);
+    renderCplChannelNumbers(rowsByCarrera, period);
     renderInvestDonuts(rowsByCarrera);
     renderEfficiencyTable(rowsByCarrera);
     renderTable(filtered);
