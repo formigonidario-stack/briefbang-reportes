@@ -122,8 +122,11 @@ function toRecords(daily) {
 }
 
 module.exports = async (req, res) => {
-  const token = process.env.META_ACCESS_TOKEN;
-  const account = process.env.MERCADO_COLON_AD_ACCOUNT;
+  // Tolera valores pegados con espacios/comillas y el ID de cuenta con o sin "act_".
+  const clean = v => String(v || "").trim().replace(/^["']|["']$/g, "").trim();
+  const token = clean(process.env.META_ACCESS_TOKEN);
+  const rawAccount = clean(process.env.MERCADO_COLON_AD_ACCOUNT).replace(/^act_/i, "").replace(/\D/g, "");
+  const account = rawAccount ? `act_${rawAccount}` : "";
   if (!token || !account) {
     res.status(500).json({ error: "Faltan META_ACCESS_TOKEN o MERCADO_COLON_AD_ACCOUNT en Vercel." });
     return;
