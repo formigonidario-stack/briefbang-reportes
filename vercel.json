@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/mercado-colon/data", "destination": "/api/mercado-colon" }
+  ]
+}

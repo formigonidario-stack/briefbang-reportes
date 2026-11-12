@@ -1,5 +1,5 @@
 export const config = {
-  matcher: ['/iucbc/:path*', '/mercado-colon/:path*'],
+  matcher: ['/iucbc/:path*', '/mercado-colon/:path*', '/api/mercado-colon'],
 };
 
 // Cada reporte tiene su propia contraseña (variable de entorno en Vercel).
@@ -9,7 +9,9 @@ const REPORTS = {
 };
 
 export default function middleware(request) {
-  const slug = new URL(request.url).pathname.split('/')[1];
+  // /api/<reporte> usa la misma contraseña que /<reporte>.
+  const parts = new URL(request.url).pathname.split('/');
+  const slug = parts[1] === 'api' ? parts[2] : parts[1];
   const report = REPORTS[slug];
   if (!report) return;
 
