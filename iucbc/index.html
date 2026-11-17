@@ -391,10 +391,13 @@
     "Enfermería Universitaria": { categoria: "Tecnicaturas", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=38684080&single=true&output=csv" },
     "Tecnicatura Universitaria en Prácticas Cardiológicas": { categoria: "Tecnicaturas", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=624948544&single=true&output=csv" },
     "Tecnicatura Universitaria en Hemoterapia e Inmunohematologia": { categoria: "Tecnicaturas", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=37340132&single=true&output=csv" },
-    "Tecnicatura Universitaria en Instrumentación Quirúrgica": { categoria: "Tecnicaturas", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=1081643568&single=true&output=csv" }
+    "Tecnicatura Universitaria en Instrumentación Quirúrgica": { categoria: "Tecnicaturas", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQM4DGn-jO_fDvv0VabFbUdsHMlf5VVEnD0qmGLKMXNe9IDO2aUl6Ew_iGN7afWclnXHuRC7frYBrBw/pub?gid=1081643568&single=true&output=csv" },
+
+    // Charlas informativas de las carreras: van aparte, no suman a la carrera. Solo datos de la API.
+    Charlas: { categoria: "Charlas", url: "" }
   };
 
-  const CATEGORIA_ORDER = ["Marca", "Carreras", "Tecnicaturas"];
+  const CATEGORIA_ORDER = ["Marca", "Carreras", "Tecnicaturas", "Charlas"];
 
   // Inversión y leads de Google Ads y Meta leídos en vivo desde las APIs (/iucbc/data → api/iucbc.js).
   // Reemplazan las columnas de inversión y leads por canal del Sheet; Leads en CRM, Calificados,

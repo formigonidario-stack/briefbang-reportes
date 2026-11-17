@@ -56,6 +56,7 @@ const CAMPAIGN_PATTERNS = [
 ];
 
 function carreraOf(id, name) {
+  if (/charla/i.test(name || "")) return "Charlas";
   if (CAMPAIGN_IDS[id]) return CAMPAIGN_IDS[id];
   const hit = CAMPAIGN_PATTERNS.find(([re]) => re.test(name || ""));
   return hit ? hit[1] : null;
@@ -63,10 +64,12 @@ function carreraOf(id, name) {
 
 // Meta: las carreras se asignan por nombre de campaña. Las tecnicaturas van en una sola
 // campaña con un conjunto de anuncios por tecnicatura, así que ahí manda el nombre del
-// conjunto. Lo que no es de una carrera (tráfico a Instagram, publicaciones promocionadas)
-// va a Branding IUCBC.
+// conjunto. Las charlas informativas van a "Charlas", aparte de las carreras. Lo que no es
+// de una carrera (tráfico a Instagram, publicaciones promocionadas) va a Branding IUCBC.
 const META_TECNICATURA_PATTERNS = CAMPAIGN_PATTERNS.slice(4); // enfermería, cardio, hemoterapia, instrumentación
 function metaCarreraOf(campaignName, adsetName) {
+  // Las charlas informativas van aparte: no suman a la carrera de la que hablan.
+  if (/charla/i.test(campaignName || "")) return "Charlas";
   if (/tecnicatura/i.test(campaignName || "")) {
     const hit = META_TECNICATURA_PATTERNS.find(([re]) => re.test(adsetName || ""));
     return hit ? hit[1] : null;
