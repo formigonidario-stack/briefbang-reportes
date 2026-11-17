@@ -1,5 +1,5 @@
 export const config = {
-  matcher: ['/iucbc/:path*', '/mercado-colon/:path*', '/api/mercado-colon'],
+  matcher: ['/iucbc/:path*', '/mercado-colon/:path*', '/api/mercado-colon', '/api/iucbc'],
 };
 
 // Cada reporte tiene su propia contraseña (variable de entorno en Vercel).

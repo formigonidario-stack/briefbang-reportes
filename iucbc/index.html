@@ -396,6 +396,57 @@
 
   const CATEGORIA_ORDER = ["Marca", "Carreras", "Tecnicaturas"];
 
+  // Inversión y leads de Google Ads leídos en vivo desde la API (/iucbc/data → api/iucbc.js).
+  // Reemplazan las columnas "Inversion Google" y "Leads Google" del Sheet; Meta, Leads en CRM,
+  // Calificados, Cierres y Objetivos siguen saliendo del Sheet.
+  const ADS_DATA_URL = "/iucbc/data";
+
+  async function fetchAdsData() {
+    const res = await fetch(ADS_DATA_URL, { cache: "no-store", credentials: "same-origin" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+  }
+
+  // Une las filas de Google de la API con las del Sheet por carrera + fecha de inicio de semana
+  // (el inicio es confiable aunque el Sheet tenga mal escrito el final del rango). Si la API trae
+  // una semana que el Sheet no tiene, la agrega; si el Sheet tiene una semana dentro del rango de
+  // la API sin gasto en Google, la deja en 0. Recalcula totales y CPL.
+  function mergeGoogle(sheetRecords, ads) {
+    const startOf = s => ((s || "").match(/^(\d{2}-\d{2}-\d{4})/) || [])[1] || s;
+    const isoOf = s => { const m = (s || "").match(/^(\d{2})-(\d{2})-(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
+    const byKey = new Map(sheetRecords.map(r => [`${r.carrera}|${startOf(r.semana)}`, r]));
+    const seen = new Set();
+    const cpl = (inv, leads) => (leads ? inv / leads : null);
+    const apply = (r, inv, leads) => {
+      r.invGoogle = inv;
+      r.leadsGoogle = leads;
+      r.cplGoogle = cpl(inv, leads);
+      r.invTotal = (r.invMeta || 0) + inv;
+      r.leadsTotal = (r.leadsMeta || 0) + leads;
+      r.cplTotal = cpl(r.invTotal, r.leadsTotal);
+    };
+    for (const g of ads.google || []) {
+      if (!CAMPAIGNS[g.carrera]) continue;
+      const k = `${g.carrera}|${startOf(g.semana)}`;
+      let r = byKey.get(k);
+      if (!r) {
+        r = { carrera: g.carrera, invMeta: null, leadsMeta: null, cplMeta: null, leadsCRM: null, cierres: null };
+        sheetRecords.push(r);
+        byKey.set(k, r);
+      }
+      r.mes = g.mes;
+      r.semana = g.semana;
+      apply(r, g.inversion, g.leads);
+      seen.add(k);
+    }
+    for (const [k, r] of byKey) {
+      const iso = isoOf(r.semana);
+      if (!seen.has(k) && iso >= ads.since && iso <= ads.until) apply(r, 0, 0);
+    }
+    return sheetRecords;
+  }
+
   // Parser CSV simple con soporte de campos entre comillas (Google Sheets exporta así
   // cuando un valor contiene comas).
   function parseCSV(text) {
@@ -1297,6 +1348,7 @@
     // Solo se piden las campañas que ya tienen URL cargada en CAMPAIGNS; las que todavía
     // dicen "TODO" se omiten en silencio hasta que se les pegue la URL de su pestaña.
     const entries = Object.entries(CAMPAIGNS).filter(([, c]) => c.url);
+    const adsPromise = fetchAdsData().then(v => ({ ok: true, v }), err => ({ ok: false, err }));
     const settled = await Promise.allSettled(
       entries.map(([name, c]) => fetchCarreraTab(c.url, name))
     );
@@ -1307,6 +1359,13 @@
       if (res.status === "fulfilled") records.push(...res.value);
       else { failed.push(name); console.error(name, res.reason); }
     });
+
+    const ads = await adsPromise;
+    if (ads.ok && records.length) mergeGoogle(records, ads.v);
+    else if (!ads.ok) {
+      console.error("Google Ads API", ads.err);
+      failed.push("Google Ads en vivo (se muestran los datos de Google cargados en el Sheet)");
+    }
 
     try {
       objetivos = await fetchObjetivos(SHEET_URLS.Objetivos);

@@ -1,5 +1,12 @@
 {
   "rewrites": [
-    { "source": "/mercado-colon/data", "destination": "/api/mercado-colon" }
+    {
+      "source": "/mercado-colon/data",
+      "destination": "/api/mercado-colon"
+    },
+    {
+      "source": "/iucbc/data",
+      "destination": "/api/iucbc"
+    }
   ]
 }
