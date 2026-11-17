@@ -1,8 +1,10 @@
-// Datos de pauta del reporte de IUCBC leídos en vivo desde la API de Google Ads
-// (antes "Inversión Google" y "Leads Google" se cargaban a mano en el Google Sheet).
-// Meta, Leads en CRM, Calificados, Cierres y Objetivos siguen saliendo del Sheet.
+// Datos de pauta del reporte de IUCBC leídos en vivo desde las APIs de Google Ads y Meta
+// (antes inversión y leads por canal se cargaban a mano en el Google Sheet).
+// Leads en CRM, Calificados, Cierres y Objetivos siguen saliendo del Sheet.
 //
 // Variables de entorno en Vercel:
+//   META_ACCESS_TOKEN        token del usuario del sistema de BriefBang (ads_read), compartido con Mercado Colón
+//   IUCBC_AD_ACCOUNT         cuenta publicitaria "iucbc pesos EN USO" (542921113409548)
 //   GADS_CLIENT_ID           cliente OAuth del proyecto de Google Cloud "ads-reporting"
 //   GADS_CLIENT_SECRET
 //   GADS_REFRESH_TOKEN       refresh token del usuario con acceso al MCC
@@ -10,15 +12,20 @@
 //   IUCBC_GADS_CUSTOMER_ID   opcional, cuenta IUCBC (default 6357789790)
 //
 // Devuelve una fila por carrera y semana (lunes a domingo, cortada en el cambio de mes,
-// igual que las filas del Sheet):
+// igual que las filas del Sheet), por canal:
 //   google: [{ carrera, mes, semana, inversion, leads }]
-// "leads" es la métrica Conversiones de Google Ads (formulario de contacto + WhatsApp,
-// las conversiones principales de la cuenta).
+//   meta:   [{ carrera, mes, semana, inversion, leads }]
+// Google: "leads" = Conversiones (formulario de contacto + WhatsApp, las conversiones
+// principales de la cuenta). Meta: "leads" = conversaciones de mensajería iniciadas
+// (WhatsApp), que es lo que se cargaba en el Sheet.
+// Si una de las dos APIs falla, se devuelve la otra y el error queda en `errors`.
 
 const API_VERSION = "v26";
 const SINCE = "2026-07-06"; // primera semana del reporte
 const TZ = "America/Argentina/Buenos_Aires";
 const DEFAULT_CUSTOMER_ID = "6357789790";
+const META_API_VERSION = "v21.0";
+const META_LEAD_ACTION = "onsite_conversion.messaging_conversation_started_7d";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -52,6 +59,20 @@ function carreraOf(id, name) {
   if (CAMPAIGN_IDS[id]) return CAMPAIGN_IDS[id];
   const hit = CAMPAIGN_PATTERNS.find(([re]) => re.test(name || ""));
   return hit ? hit[1] : null;
+}
+
+// Meta: las carreras se asignan por nombre de campaña. Las tecnicaturas van en una sola
+// campaña con un conjunto de anuncios por tecnicatura, así que ahí manda el nombre del
+// conjunto. Lo que no es de una carrera (tráfico a Instagram, publicaciones promocionadas)
+// va a Branding IUCBC.
+const META_TECNICATURA_PATTERNS = CAMPAIGN_PATTERNS.slice(4); // enfermería, cardio, hemoterapia, instrumentación
+function metaCarreraOf(campaignName, adsetName) {
+  if (/tecnicatura/i.test(campaignName || "")) {
+    const hit = META_TECNICATURA_PATTERNS.find(([re]) => re.test(adsetName || ""));
+    return hit ? hit[1] : null;
+  }
+  const hit = CAMPAIGN_PATTERNS.slice(0, 3).find(([re]) => re.test(campaignName || ""));
+  return hit ? hit[1] : "Branding IUCBC";
 }
 
 const pad = n => String(n).padStart(2, "0");
@@ -118,6 +139,56 @@ async function searchStream(customerId, loginCustomerId, token, query) {
   return (Array.isArray(body) ? body : [body]).flatMap(chunk => chunk.results || []);
 }
 
+async function fetchMetaInsights(account, token, until) {
+  const params = new URLSearchParams({
+    level: "adset",
+    time_increment: "1",
+    time_range: JSON.stringify({ since: SINCE, until }),
+    fields: "campaign_name,adset_name,spend,actions",
+    limit: "500",
+    access_token: token,
+  });
+  let url = `https://graph.facebook.com/${META_API_VERSION}/${account}/insights?${params}`;
+  const rows = [];
+  while (url) {
+    const res = await fetch(url);
+    const body = await res.json();
+    if (!res.ok || body.error) throw new Error(`Meta API: ${body.error ? body.error.message : `HTTP ${res.status}`}`);
+    rows.push(...(body.data || []));
+    url = body.paging && body.paging.next;
+  }
+  return rows;
+}
+
+function metaToRows(daily) {
+  const rows = new Map();
+  const unmapped = new Map();
+  for (const r of daily) {
+    const spend = Number(r.spend || 0);
+    const lead = (r.actions || []).find(a => a.action_type === META_LEAD_ACTION);
+    const leads = lead ? Number(lead.value || 0) : 0;
+    if (!spend && !leads) continue;
+    const carrera = metaCarreraOf(r.campaign_name, r.adset_name);
+    if (!carrera) {
+      const k = `${r.campaign_name} / ${r.adset_name}`;
+      const u = unmapped.get(k) || { name: k, inversion: 0 };
+      u.inversion += spend;
+      unmapped.set(k, u);
+      continue;
+    }
+    const { mes, semana } = bucketOf(r.date_start);
+    const k = `${carrera}|${semana}`;
+    const row = rows.get(k) || { carrera, mes, semana, inversion: 0, leads: 0 };
+    row.inversion += spend;
+    row.leads += leads;
+    rows.set(k, row);
+  }
+  return {
+    meta: [...rows.values()].map(r => ({ ...r, inversion: Math.round(r.inversion * 100) / 100 })),
+    unmapped: [...unmapped.values()].map(u => ({ ...u, inversion: Math.round(u.inversion * 100) / 100 })),
+  };
+}
+
 function toRows(results) {
   const rows = new Map();
   const unmapped = new Map();
@@ -150,27 +221,49 @@ function toRows(results) {
   };
 }
 
-module.exports = async (req, res) => {
+async function loadGoogle(until) {
   const clientId = clean(process.env.GADS_CLIENT_ID);
   const clientSecret = clean(process.env.GADS_CLIENT_SECRET);
   const refreshToken = clean(process.env.GADS_REFRESH_TOKEN);
   const loginCustomerId = digits(process.env.GADS_LOGIN_CUSTOMER_ID);
   const customerId = digits(process.env.IUCBC_GADS_CUSTOMER_ID) || DEFAULT_CUSTOMER_ID;
   if (!clientId || !clientSecret || !refreshToken || !loginCustomerId) {
-    res.status(500).json({ error: "Faltan GADS_CLIENT_ID, GADS_CLIENT_SECRET, GADS_REFRESH_TOKEN o GADS_LOGIN_CUSTOMER_ID en Vercel." });
+    throw new Error("Faltan GADS_CLIENT_ID, GADS_CLIENT_SECRET, GADS_REFRESH_TOKEN o GADS_LOGIN_CUSTOMER_ID en Vercel.");
+  }
+  const token = await accessToken(clientId, clientSecret, refreshToken);
+  const results = await searchStream(customerId, loginCustomerId, token,
+    "SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, metrics.conversions " +
+    `FROM campaign WHERE segments.date BETWEEN '${SINCE}' AND '${until}'`);
+  return toRows(results);
+}
+
+async function loadMeta(until) {
+  const token = clean(process.env.META_ACCESS_TOKEN);
+  const rawAccount = digits(process.env.IUCBC_AD_ACCOUNT);
+  if (!token || !rawAccount) throw new Error("Faltan META_ACCESS_TOKEN o IUCBC_AD_ACCOUNT en Vercel.");
+  return metaToRows(await fetchMetaInsights(`act_${rawAccount}`, token, until));
+}
+
+module.exports = async (req, res) => {
+  const until = todayAR();
+  const [google, meta] = await Promise.allSettled([loadGoogle(until), loadMeta(until)]);
+  const out = { since: SINCE, until, updatedAt: new Date().toISOString(), errors: {}, unmapped: {} };
+  if (google.status === "fulfilled") {
+    out.google = google.value.google;
+    out.unmapped.google = google.value.unmapped;
+  } else out.errors.google = google.reason.message;
+  if (meta.status === "fulfilled") {
+    out.meta = meta.value.meta;
+    out.unmapped.meta = meta.value.unmapped;
+  } else out.errors.meta = meta.reason.message;
+
+  if (!out.google && !out.meta) {
+    res.status(502).json({ ...out, error: Object.values(out.errors).join(" | ") });
     return;
   }
-  try {
-    const until = todayAR();
-    const token = await accessToken(clientId, clientSecret, refreshToken);
-    const results = await searchStream(customerId, loginCustomerId, token,
-      "SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, metrics.conversions " +
-      `FROM campaign WHERE segments.date BETWEEN '${SINCE}' AND '${until}'`);
-    const data = toRows(results);
-    // Cache en el edge de Vercel: 15 min fresco, hasta 1 h sirviendo el anterior mientras refresca.
-    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=3600");
-    res.status(200).json({ ...data, since: SINCE, until, updatedAt: new Date().toISOString() });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
+  // Cache en el edge de Vercel: 15 min fresco, hasta 1 h sirviendo el anterior mientras refresca.
+  // Si falló una de las dos APIs, cache corto para que se recupere rápido.
+  const partial = Object.keys(out.errors).length > 0;
+  res.setHeader("Cache-Control", partial ? "s-maxage=60" : "s-maxage=900, stale-while-revalidate=3600");
+  res.status(200).json(out);
 };
